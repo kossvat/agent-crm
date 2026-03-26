@@ -1,62 +1,102 @@
-# Agent CRM
+# Agent CRM 🤖
 
-CRM for AI agent teams — Telegram Mini App.
+CRM для управления командой AI-агентов — Telegram Mini App.
 
-## Quick Start
+![Python](https://img.shields.io/badge/python-3.11+-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)
+![License](https://img.shields.io/badge/license-private-red)
+
+## Что это
+
+Панель управления AI-агентами через Telegram Mini App:
+- **Dashboard** — статус системы, бюджет, графики расходов, алерты
+- **Task Board** — канбан-доска с drag & drop (SortableJS)
+- **Agents** — карточки агентов, смена моделей, статусы
+- **Crons** — управление cron-задачами (вкл/выкл)
+- **Journal** — ежедневный журнал работы агентов (Markdown)
+- **Files** — просмотр файлов агентов (MEMORY.md, SOUL.md и т.д.)
+- **Alerts** — система оповещений с приоритетами
+
+## Стек
+
+| Layer | Tech |
+|-------|------|
+| Backend | **FastAPI** + SQLAlchemy + SQLite |
+| Frontend | Vanilla JS/CSS (Telegram Mini App SDK) |
+| Auth | Telegram WebApp `initData` validation |
+| Charts | Chart.js |
+| Drag & Drop | SortableJS |
+| Deploy | Cloudflare Tunnel → localhost |
+
+## Структура
+
+```
+agent-crm/
+├── backend/
+│   ├── main.py           # FastAPI app, uvicorn entry
+│   ├── config.py          # env config
+│   ├── database.py        # SQLAlchemy setup
+│   ├── models.py          # ORM models
+│   ├── schemas.py         # Pydantic schemas
+│   ├── auth.py            # Telegram auth middleware
+│   ├── routers/           # API endpoints
+│   │   ├── agents.py
+│   │   ├── alerts.py
+│   │   ├── costs.py
+│   │   ├── crons.py
+│   │   ├── dashboard.py
+│   │   ├── files.py
+│   │   ├── journal.py
+│   │   ├── spending.py
+│   │   ├── system.py
+│   │   └── tasks.py
+│   └── services/          # Business logic
+│       ├── openclaw.py    # OpenClaw gateway integration
+│       ├── sync.py        # Agent/cron sync
+│       └── watchdog.py    # Spending watchdog
+├── frontend/
+│   ├── index.html         # SPA shell
+│   ├── style.css          # Telegram theme-aware styles
+│   └── app.js             # Router, views, API client
+├── bot/                   # Telegram bot (Mini App launcher)
+├── data/                  # SQLite DB (gitignored)
+├── scripts/               # Utility scripts
+└── requirements.txt
+```
+
+## Запуск
 
 ```bash
-cd ~/projects/agent-crm
+# 1. Установить зависимости
+pip install -r requirements.txt
 
-# Install deps
-/home/caramel/.caldav-env/bin/pip install -r requirements.txt
-
-# Copy and edit config
+# 2. Настроить .env
 cp .env.example .env
-# Set BOT_TOKEN from @BotFather
+# BOT_TOKEN=... SECRET_KEY=...
 
-# Run (dev mode)
-/home/caramel/.caldav-env/bin/python3 -m backend.main
+# 3. Запустить
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8100
 ```
 
-Server starts on `http://127.0.0.1:8100`
+Frontend раздаётся FastAPI как статика на `/`.
 
-## Architecture
+## API
 
-```
-Backend:  FastAPI + SQLAlchemy + SQLite
-Frontend: Telegram Mini App (TWA), vanilla JS
-Auth:     Telegram initData HMAC-SHA256
-```
+Все эндпоинты: `GET /docs` (Swagger UI).
 
-## API Endpoints
+Основные:
+- `GET /api/dashboard` — сводка
+- `GET/POST/PATCH/DELETE /api/tasks` — задачи
+- `GET /api/agents` — список агентов
+- `GET /api/spending/current` — расходы
+- `GET /api/alerts` — оповещения
+- `POST /api/system/stop|resume|fix` — управление gateway
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /api/dashboard | Summary: agents, tasks, costs, alerts |
-| GET | /api/agents | List agents |
-| POST | /api/agents | Create agent |
-| GET/POST/PATCH/DELETE | /api/tasks | Task CRUD |
-| GET | /api/crons | List cron jobs |
-| GET | /api/costs | Cost history |
-| GET | /api/costs/summary | Cost summary by agent |
-| GET | /api/alerts | Alert feed |
-| PATCH | /api/alerts/{id}/read | Mark alert read |
-| POST | /api/sync | Trigger OpenClaw sync |
+## Авторизация
 
-## OpenClaw Integration
+В продакшене: Telegram Mini App `initData` валидируется через HMAC.
+`DEV_MODE=true` отключает проверку для локальной разработки.
 
-On startup, syncs:
-- Agent configs from `~/.openclaw/agents/`
-- Agent sessions (status, model, last active)
-- Crontab entries
+---
 
-## Dev Mode
-
-Set `DEV_MODE=true` in `.env` to skip Telegram auth (uses mock user).
-
-## Telegram Mini App Setup
-
-1. Talk to @BotFather, create a bot
-2. `/newapp` → set Web App URL to your server
-3. Set `BOT_TOKEN` in `.env`
-4. Users open the bot → click "Open App" → TWA loads
+Built for [OpenClaw](https://openclaw.ai) agent teams.
