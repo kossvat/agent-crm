@@ -3,10 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Agent CRM</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
-    <link rel="stylesheet" href="style.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css?v=20260326b">
 </head>
 <body>
     <div id="app">
@@ -30,6 +35,18 @@
             <button class="nav-btn" data-route="agents">
                 <span class="nav-icon">🤖</span>
                 <span class="nav-label">Agents</span>
+            </button>
+            <button class="nav-btn" data-route="crons">
+                <span class="nav-icon">⏰</span>
+                <span class="nav-label">Crons</span>
+            </button>
+            <button class="nav-btn" data-route="files">
+                <span class="nav-icon">📁</span>
+                <span class="nav-label">Files</span>
+            </button>
+            <button class="nav-btn" data-route="journal">
+                <span class="nav-icon">📔</span>
+                <span class="nav-label">Journal</span>
             </button>
             <button class="nav-btn" data-route="alerts">
                 <span class="nav-icon">🔔</span>
@@ -81,8 +98,22 @@
                         </select>
                     </div>
                     <div class="field">
-                        <label for="task-deadline">Deadline</label>
-                        <input type="datetime-local" id="task-deadline">
+                        <label for="task-category">Category</label>
+                        <select id="task-category">
+                            <option value="">None</option>
+                            <option value="business">💼 Business</option>
+                            <option value="content">📝 Content</option>
+                            <option value="projects">🚀 Projects</option>
+                            <option value="system">⚙️ System</option>
+                            <option value="education">📚 Education</option>
+                            <option value="personal">👤 Personal</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="task-deadline">📅 Deadline</label>
+                        <input type="datetime-local" id="task-deadline" placeholder="Select date & time">
                     </div>
                 </div>
                 <div class="modal-actions">
@@ -93,6 +124,6 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260326b"></script>
 </body>
 </html>
