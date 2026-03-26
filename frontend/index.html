@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Agent CRM</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header id="header">
+            <h1 id="page-title">Dashboard</h1>
+        </header>
+
+        <main id="content">
+            <div class="loading">Loading...</div>
+        </main>
+
+        <nav id="bottom-nav">
+            <button class="nav-btn active" data-route="dashboard">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Home</span>
+            </button>
+            <button class="nav-btn" data-route="kanban">
+                <span class="nav-icon">📋</span>
+                <span class="nav-label">Board</span>
+            </button>
+            <button class="nav-btn" data-route="agents">
+                <span class="nav-icon">🤖</span>
+                <span class="nav-label">Agents</span>
+            </button>
+            <button class="nav-btn" data-route="alerts">
+                <span class="nav-icon">🔔</span>
+                <span class="nav-label">Alerts</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Task Modal -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modal-title">New Task</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="task-form" class="modal-body">
+                <input type="hidden" id="task-id">
+                <div class="field">
+                    <label for="task-title">Title</label>
+                    <input type="text" id="task-title" required placeholder="Task title...">
+                </div>
+                <div class="field">
+                    <label for="task-desc">Description</label>
+                    <textarea id="task-desc" rows="3" placeholder="Details..."></textarea>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="task-status">Status</label>
+                        <select id="task-status">
+                            <option value="todo">Todo</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="done">Done</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="task-priority">Priority</label>
+                        <select id="task-priority">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="task-agent">Agent</label>
+                        <select id="task-agent">
+                            <option value="">Unassigned</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="task-deadline">Deadline</label>
+                        <input type="datetime-local" id="task-deadline">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn btn-danger" id="btn-delete-task" style="display:none" onclick="deleteCurrentTask()">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
