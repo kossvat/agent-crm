@@ -6,6 +6,7 @@ import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
@@ -180,7 +181,7 @@ def create_agent(
                     detail=f"Agent limit reached ({limit}). Upgrade your plan to add more agents.",
                 )
 
-    existing = db.query(Agent).filter(Agent.name == data.name).first()
+    existing = db.query(Agent).filter(Agent.name == data.name, Agent.workspace_id == ws_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="Agent with this name already exists")
 
@@ -189,3 +190,149 @@ def create_agent(
     db.commit()
     db.refresh(agent)
     return agent
+
+
+class DiscoverRequest(BaseModel):
+    """Request body for agent auto-discovery."""
+    openclaw_url: str  # e.g. "http://localhost:3335"
+
+
+class DiscoverResponse(BaseModel):
+    imported: int
+    skipped: int
+    agents: list[str]
+
+
+@router.post("/discover", response_model=DiscoverResponse)
+def discover_agents(
+    data: DiscoverRequest,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Auto-discover agents from an OpenClaw instance.
+
+    Connects to the OpenClaw API, fetches agent list, and imports
+    them into the current workspace. Skips agents that already exist.
+    Also saves the openclaw_url on the workspace for future syncs.
+    """
+    ws_id = user.get("workspace_id", 1)
+    workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Tier limit check
+    limit = workspace.agent_limit
+    current_count = db.query(Agent).filter(Agent.workspace_id == ws_id).count()
+
+    # Save openclaw_url on workspace
+    url = data.openclaw_url.rstrip("/")
+    workspace.openclaw_url = url
+
+    # Try to fetch agents from OpenClaw API
+    imported_names = []
+    skipped = 0
+
+    try:
+        resp = httpx.get(f"{url}/api/agents", timeout=10)
+        if resp.status_code == 200:
+            remote_agents = resp.json()
+            if isinstance(remote_agents, list):
+                for ra in remote_agents:
+                    name = ra.get("name", "").strip()
+                    if not name:
+                        continue
+
+                    # Check if agent already exists in this workspace
+                    existing = db.query(Agent).filter(
+                        Agent.name == name, Agent.workspace_id == ws_id
+                    ).first()
+                    if existing:
+                        skipped += 1
+                        continue
+
+                    # Tier limit
+                    if limit >= 0 and (current_count + len(imported_names)) >= limit:
+                        skipped += 1
+                        continue
+
+                    agent = Agent(
+                        name=name,
+                        emoji=ra.get("emoji", "🤖"),
+                        model=ra.get("model", ""),
+                        role=ra.get("role", ""),
+                        bio=ra.get("bio", ""),
+                        session_key=ra.get("session_key", ""),
+                        workspace_id=ws_id,
+                    )
+                    db.add(agent)
+                    imported_names.append(name)
+        else:
+            # Try local OpenClaw config as fallback
+            from backend.services.openclaw import get_agent_configs
+            configs = get_agent_configs()
+            for cfg in configs:
+                name = cfg.get("name", "").strip()
+                if not name:
+                    continue
+                existing = db.query(Agent).filter(
+                    Agent.name == name, Agent.workspace_id == ws_id
+                ).first()
+                if existing:
+                    skipped += 1
+                    continue
+                if limit >= 0 and (current_count + len(imported_names)) >= limit:
+                    skipped += 1
+                    continue
+                agent = Agent(
+                    name=name,
+                    emoji=cfg.get("emoji", "🤖"),
+                    model=cfg.get("model", ""),
+                    role=cfg.get("role", ""),
+                    bio=cfg.get("bio", ""),
+                    session_key=cfg.get("session_key", ""),
+                    workspace_id=ws_id,
+                )
+                db.add(agent)
+                imported_names.append(name)
+    except httpx.RequestError as e:
+        # If remote fails, try local config
+        try:
+            from backend.services.openclaw import get_agent_configs
+            configs = get_agent_configs()
+            for cfg in configs:
+                name = cfg.get("name", "").strip()
+                if not name:
+                    continue
+                existing = db.query(Agent).filter(
+                    Agent.name == name, Agent.workspace_id == ws_id
+                ).first()
+                if existing:
+                    skipped += 1
+                    continue
+                if limit >= 0 and (current_count + len(imported_names)) >= limit:
+                    skipped += 1
+                    continue
+                agent = Agent(
+                    name=name,
+                    emoji=cfg.get("emoji", "🤖"),
+                    model=cfg.get("model", ""),
+                    role=cfg.get("role", ""),
+                    bio=cfg.get("bio", ""),
+                    session_key=cfg.get("session_key", ""),
+                    workspace_id=ws_id,
+                )
+                db.add(agent)
+                imported_names.append(name)
+        except Exception:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Could not connect to OpenClaw at {url} and local config fallback failed",
+            )
+
+    db.commit()
+
+    return DiscoverResponse(
+        imported=len(imported_names),
+        skipped=skipped,
+        agents=imported_names,
+    )
