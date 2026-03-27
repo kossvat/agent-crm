@@ -112,13 +112,21 @@ def get_current_user(request: Request) -> dict:
         token = auth_header[7:]
         try:
             payload = decode_access_token(token)
+            jwt_user_id = payload["user_id"]
+            # Resolve is_owner from DB (check telegram_id)
+            from backend.database import SessionLocal
+            from backend.models import User
+            _db = SessionLocal()
+            _user = _db.query(User).filter(User.id == jwt_user_id).first()
+            _is_owner = _user and _user.telegram_id == OWNER_USER_ID if _user else False
+            _db.close()
             return {
-                "user_id": payload["user_id"],
+                "user_id": jwt_user_id,
                 "workspace_id": payload["workspace_id"],
-                "is_owner": True,
-                "full_access": True,
+                "is_owner": _is_owner,
+                "full_access": _is_owner,
                 "agent_id": None,
-                "username": "jwt_user",
+                "username": _user.name if _user else "jwt_user",
             }
         except ValueError as e:
             raise HTTPException(status_code=401, detail=str(e))

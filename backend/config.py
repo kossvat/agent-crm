@@ -10,7 +10,8 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 # Telegram bot
 BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
-SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me")
+_default_secret = "change-me-to-a-secure-random-string-at-least-32-bytes"
+SECRET_KEY: str = os.getenv("SECRET_KEY", _default_secret)
 DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
 
 # Database
