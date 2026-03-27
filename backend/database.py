@@ -39,6 +39,22 @@ def _migrate_columns():
         "agents": {
             "role": "VARCHAR(100) DEFAULT ''",
             "bio": "TEXT DEFAULT ''",
+            "workspace_id": "INTEGER REFERENCES workspaces(id)",
+        },
+        "tasks": {
+            "workspace_id": "INTEGER REFERENCES workspaces(id)",
+        },
+        "crons": {
+            "workspace_id": "INTEGER REFERENCES workspaces(id)",
+        },
+        "costs": {
+            "workspace_id": "INTEGER REFERENCES workspaces(id)",
+        },
+        "journal_entries": {
+            "workspace_id": "INTEGER REFERENCES workspaces(id)",
+        },
+        "alerts": {
+            "workspace_id": "INTEGER REFERENCES workspaces(id)",
         },
     }
 
@@ -53,3 +69,30 @@ def _migrate_columns():
                         f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
                     ))
                     conn.commit()
+
+        # Seed default User and Workspace if they don't exist
+        if inspector.has_table("users"):
+            row = conn.execute(sqlalchemy.text("SELECT id FROM users WHERE id = 1")).fetchone()
+            if not row:
+                conn.execute(sqlalchemy.text(
+                    "INSERT INTO users (id, telegram_id, name, onboarding_complete) "
+                    "VALUES (1, 1080204489, 'Sviatoslav', 1)"
+                ))
+                conn.commit()
+
+        if inspector.has_table("workspaces"):
+            row = conn.execute(sqlalchemy.text("SELECT id FROM workspaces WHERE id = 1")).fetchone()
+            if not row:
+                conn.execute(sqlalchemy.text(
+                    "INSERT INTO workspaces (id, name, owner_id, tier, agent_limit) "
+                    "VALUES (1, 'Default', 1, 'hobby', 3)"
+                ))
+                conn.commit()
+
+        # Backfill workspace_id=1 for all existing rows with NULL workspace_id
+        for table_name in ["agents", "tasks", "crons", "costs", "journal_entries", "alerts"]:
+            if inspector.has_table(table_name):
+                conn.execute(sqlalchemy.text(
+                    f"UPDATE {table_name} SET workspace_id = 1 WHERE workspace_id IS NULL"
+                ))
+                conn.commit()

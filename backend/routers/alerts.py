@@ -20,8 +20,8 @@ def list_alerts(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List alerts, optionally filtered by read status."""
-    q = db.query(Alert)
+    ws_id = user.get("workspace_id", 1)
+    q = db.query(Alert).filter(Alert.workspace_id == ws_id)
 
     if unread is True:
         q = q.filter(Alert.is_read == False)
@@ -37,8 +37,8 @@ def create_alert(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a new alert."""
-    alert = Alert(**data.model_dump())
+    ws_id = user.get("workspace_id", 1)
+    alert = Alert(**data.model_dump(), workspace_id=ws_id)
     db.add(alert)
     db.commit()
     db.refresh(alert)
@@ -51,8 +51,8 @@ def mark_alert_read(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Mark an alert as read."""
-    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    ws_id = user.get("workspace_id", 1)
+    alert = db.query(Alert).filter(Alert.id == alert_id, Alert.workspace_id == ws_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 

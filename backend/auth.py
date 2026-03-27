@@ -1,13 +1,38 @@
-"""Telegram Mini App initData HMAC-SHA256 validation."""
+"""Telegram Mini App initData HMAC-SHA256 validation + JWT auth."""
 
 import hashlib
 import hmac
 import json
 import time
+from datetime import datetime, timezone, timedelta
 from urllib.parse import parse_qs, unquote
 
+import jwt
 from fastapi import Request, HTTPException
-from backend.config import BOT_TOKEN, DEV_MODE
+from backend.config import BOT_TOKEN, DEV_MODE, SECRET_KEY
+
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24
+
+
+def create_access_token(user_id: int, workspace_id: int) -> str:
+    """Create a JWT token with user_id and workspace_id."""
+    payload = {
+        "user_id": user_id,
+        "workspace_id": workspace_id,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def decode_access_token(token: str) -> dict:
+    """Decode and validate a JWT token. Returns payload dict."""
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise ValueError("Token expired")
+    except jwt.InvalidTokenError as e:
+        raise ValueError(f"Invalid token: {e}")
 
 
 def validate_init_data(init_data: str) -> dict:
@@ -15,39 +40,32 @@ def validate_init_data(init_data: str) -> dict:
     Validate Telegram WebApp initData using HMAC-SHA256.
     Returns parsed user data on success.
     Raises ValueError on failure.
-
-    See: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
     """
     if not init_data:
         raise ValueError("Empty initData")
 
-    # Parse query string
     parsed = parse_qs(init_data, keep_blank_values=True)
     received_hash = parsed.pop("hash", [None])[0]
 
     if not received_hash:
         raise ValueError("No hash in initData")
 
-    # Build data-check-string: sorted key=value pairs joined by \n
     data_pairs = []
     for key in sorted(parsed.keys()):
         val = parsed[key][0]
         data_pairs.append(f"{key}={val}")
     data_check_string = "\n".join(data_pairs)
 
-    # Compute HMAC
     secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
     computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
         raise ValueError("Invalid hash")
 
-    # Check auth_date freshness (allow 24h)
     auth_date = int(parsed.get("auth_date", [0])[0])
     if time.time() - auth_date > 86400:
         raise ValueError("initData expired")
 
-    # Extract user
     user_raw = parsed.get("user", ["{}"])[0]
     user = json.loads(unquote(user_raw))
 
@@ -63,7 +81,6 @@ def validate_init_data(init_data: str) -> dict:
 # Owner Telegram user_id — full access
 OWNER_USER_ID = 1080204489
 
-# Agent name → agent_id mapping (set after first DB sync)
 # Agents with full access (owner + Caramel)
 FULL_ACCESS_AGENT_IDS = {2}  # Caramel
 
@@ -86,34 +103,51 @@ def _is_local_request(request: Request) -> bool:
 
 def get_current_user(request: Request) -> dict:
     """
-    FastAPI dependency — extract and validate Telegram user from request.
-    - Local agent-to-agent calls: X-Agent-Id header from localhost
-    - Telegram Mini App: X-Telegram-Init-Data header (HMAC validated)
-    - Everything else: 401
+    FastAPI dependency — extract and validate user from request.
+    Supports: JWT Bearer token, local agent X-Agent-Id, Telegram initData, DEV_MODE.
     """
-    # Agent-to-agent calls from localhost (OpenClaw agents)
+    # 1. JWT Bearer token
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        try:
+            payload = decode_access_token(token)
+            return {
+                "user_id": payload["user_id"],
+                "workspace_id": payload["workspace_id"],
+                "is_owner": True,
+                "full_access": True,
+                "agent_id": None,
+                "username": "jwt_user",
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=401, detail=str(e))
+
+    # 2. Agent-to-agent calls from localhost (OpenClaw agents)
     agent_header = request.headers.get("X-Agent-Id", "")
     if agent_header and _is_local_request(request):
         agent_id = int(agent_header) if agent_header.isdigit() else AGENT_NAME_TO_ID.get(agent_header.lower(), 0)
         return {
             "user_id": 0,
+            "workspace_id": 1,
             "agent_id": agent_id,
             "is_owner": False,
             "full_access": agent_id in FULL_ACCESS_AGENT_IDS,
             "username": agent_header,
         }
 
-    # DEV_MODE bypass for screenshots/testing
+    # 3. DEV_MODE bypass for screenshots/testing
     if DEV_MODE and _is_local_request(request):
         return {
             "user_id": OWNER_USER_ID,
+            "workspace_id": 1,
             "is_owner": True,
             "full_access": True,
             "agent_id": None,
             "username": "dev",
         }
 
-    # Telegram Mini App auth
+    # 4. Telegram Mini App auth
     init_data = request.headers.get("X-Telegram-Init-Data", "")
     if not init_data:
         raise HTTPException(status_code=401, detail="Unauthorized — open via Telegram bot")
@@ -123,22 +157,19 @@ def get_current_user(request: Request) -> dict:
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-    # Only allow owner
+    # Only allow owner (legacy — multi-tenant uses JWT path)
     if user.get("user_id") != OWNER_USER_ID:
         raise HTTPException(status_code=403, detail="Access denied")
 
     user["is_owner"] = True
     user["full_access"] = True
     user["agent_id"] = None
+    user["workspace_id"] = 1
     return user
 
 
 def has_task_access(user: dict, task, action: str = "read") -> bool:
-    """Check if user has access to a specific task.
-    
-    Full access (owner + Caramel): everything.
-    Agents: read/write only their own tasks.
-    """
+    """Check if user has access to a specific task."""
     if user.get("full_access"):
         return True
 
@@ -148,5 +179,5 @@ def has_task_access(user: dict, task, action: str = "read") -> bool:
 
     if action == "read":
         return task.agent_id == agent_id or task.agent_id is None
-    else:  # write, delete
+    else:
         return task.agent_id == agent_id

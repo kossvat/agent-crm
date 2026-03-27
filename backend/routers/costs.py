@@ -22,8 +22,8 @@ def list_costs(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List costs with optional filters."""
-    q = db.query(Cost)
+    ws_id = user.get("workspace_id", 1)
+    q = db.query(Cost).filter(Cost.workspace_id == ws_id)
 
     if agent_id:
         q = q.filter(Cost.agent_id == agent_id)
@@ -42,7 +42,7 @@ def cost_summary(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Cost summary grouped by agent."""
+    ws_id = user.get("workspace_id", 1)
     q = (
         db.query(
             Cost.agent_id,
@@ -53,6 +53,7 @@ def cost_summary(
             func.sum(Cost.output_tokens).label("total_output_tokens"),
         )
         .join(Agent, Cost.agent_id == Agent.id)
+        .filter(Cost.workspace_id == ws_id)
         .group_by(Cost.agent_id, Agent.name, Agent.emoji)
     )
 

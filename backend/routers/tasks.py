@@ -31,7 +31,6 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
 def compute_deadline_status(task) -> Optional[str]:
-    """Compute deadline status: ok / soon (< 1h) / overdue."""
     if not task.deadline or task.status == TaskStatus.done:
         return None
     now = datetime.now(timezone.utc)
@@ -45,7 +44,6 @@ def compute_deadline_status(task) -> Optional[str]:
 
 
 def task_to_response(task) -> dict:
-    """Convert task ORM object to response dict with deadline_status."""
     resp = TaskResponse.model_validate(task)
     resp.deadline_status = compute_deadline_status(task)
     return resp
@@ -62,10 +60,9 @@ def list_tasks(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List tasks with optional filters including time period and category."""
-    q = db.query(Task).options(joinedload(Task.agent))
+    ws_id = user.get("workspace_id", 1)
+    q = db.query(Task).options(joinedload(Task.agent)).filter(Task.workspace_id == ws_id)
 
-    # Access control: non-admin agents see only their tasks
     if not user.get("full_access") and user.get("agent_id"):
         q = q.filter((Task.agent_id == user["agent_id"]) | (Task.agent_id.is_(None)))
 
@@ -82,7 +79,6 @@ def list_tasks(
     if has_deadline is False:
         q = q.filter(Task.deadline.is_(None))
 
-    # Period filter — tasks with deadline in range OR in_progress without deadline
     if period and period != "all":
         start_date, end_date = _period_range(period)
         start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc)
@@ -102,14 +98,14 @@ def create_task(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a new task. Non-admin agents can only create tasks for themselves."""
-    # Access control: agents can only create tasks for themselves
+    ws_id = user.get("workspace_id", 1)
+
     if not user.get("full_access") and user.get("agent_id"):
         if data.agent_id and data.agent_id != user["agent_id"]:
             raise HTTPException(status_code=403, detail="Can only create tasks for yourself")
         data.agent_id = user["agent_id"]
 
-    task = Task(**data.model_dump())
+    task = Task(**data.model_dump(), workspace_id=ws_id)
     if not task.created_by:
         task.created_by = user.get("username", str(user.get("user_id", "")))
     db.add(task)
@@ -123,12 +119,7 @@ def get_pending_reminders(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get tasks that need reminder notifications.
-    Returns tasks where:
-    - deadline is set and not done
-    - 1h reminder not sent yet AND deadline < 1h away
-    - OR due reminder not sent yet AND deadline has passed
-    """
+    ws_id = user.get("workspace_id", 1)
     now = datetime.now(timezone.utc)
     one_hour_ahead = now + timedelta(hours=1)
 
@@ -136,6 +127,7 @@ def get_pending_reminders(
         db.query(Task)
         .options(joinedload(Task.agent))
         .filter(
+            Task.workspace_id == ws_id,
             Task.deadline.isnot(None),
             Task.status != TaskStatus.done,
         )
@@ -145,10 +137,8 @@ def get_pending_reminders(
     pending = []
     for t in tasks:
         dl = t.deadline if t.deadline.tzinfo else t.deadline.replace(tzinfo=timezone.utc)
-        # 1h reminder: deadline within 1h and not sent
         if not t.reminder_1h_sent and dl <= one_hour_ahead:
             pending.append(t)
-        # Due reminder: deadline passed and not sent
         elif not t.reminder_due_sent and dl <= now:
             pending.append(t)
 
@@ -162,8 +152,8 @@ def ack_reminder(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Acknowledge a reminder was sent (so it's not sent again)."""
-    task = db.query(Task).filter(Task.id == task_id).first()
+    ws_id = user.get("workspace_id", 1)
+    task = db.query(Task).filter(Task.id == task_id, Task.workspace_id == ws_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -182,8 +172,8 @@ def get_task(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get a single task."""
-    task = db.query(Task).options(joinedload(Task.agent)).filter(Task.id == task_id).first()
+    ws_id = user.get("workspace_id", 1)
+    task = db.query(Task).options(joinedload(Task.agent)).filter(Task.id == task_id, Task.workspace_id == ws_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if not has_task_access(user, task, "read"):
@@ -198,8 +188,8 @@ def update_task(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update a task (partial). Resets reminders if deadline changes."""
-    task = db.query(Task).filter(Task.id == task_id).first()
+    ws_id = user.get("workspace_id", 1)
+    task = db.query(Task).filter(Task.id == task_id, Task.workspace_id == ws_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if not has_task_access(user, task, "write"):
@@ -207,12 +197,10 @@ def update_task(
 
     update_data = data.model_dump(exclude_unset=True)
 
-    # Non-admin agents can't reassign tasks
     if not user.get("full_access") and "agent_id" in update_data:
         if update_data["agent_id"] != task.agent_id:
             raise HTTPException(status_code=403, detail="Cannot reassign tasks")
 
-    # Reset reminder flags if deadline changes
     if "deadline" in update_data and update_data["deadline"] != task.deadline:
         task.reminder_1h_sent = False
         task.reminder_due_sent = False
@@ -231,8 +219,8 @@ def delete_task(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a task."""
-    task = db.query(Task).filter(Task.id == task_id).first()
+    ws_id = user.get("workspace_id", 1)
+    task = db.query(Task).filter(Task.id == task_id, Task.workspace_id == ws_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if not has_task_access(user, task, "write"):

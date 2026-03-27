@@ -40,22 +40,22 @@ def list_journal_days(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List journal days with entries, most recent first."""
+    ws_id = user.get("workspace_id", 1)
     entries = (
         db.query(JournalEntry)
         .options(joinedload(JournalEntry.agent))
+        .filter(JournalEntry.workspace_id == ws_id)
         .order_by(JournalEntry.date.desc(), JournalEntry.created.desc())
         .all()
     )
 
-    # Group by date
     days: dict[date, list] = {}
     for e in entries:
         days.setdefault(e.date, []).append(e)
 
-    # Get cost per day
     cost_rows = (
         db.query(Cost.date, Cost.cost_usd)
+        .filter(Cost.workspace_id == ws_id)
         .order_by(Cost.date.desc())
         .all()
     )
@@ -80,8 +80,8 @@ def create_journal_entry(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a journal entry."""
-    entry = JournalEntry(**data.model_dump())
+    ws_id = user.get("workspace_id", 1)
+    entry = JournalEntry(**data.model_dump(), workspace_id=ws_id)
     db.add(entry)
     db.commit()
     db.refresh(entry)
@@ -95,8 +95,8 @@ def update_journal_entry(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update a journal entry."""
-    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id).first()
+    ws_id = user.get("workspace_id", 1)
+    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id, JournalEntry.workspace_id == ws_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
 
@@ -114,8 +114,8 @@ def delete_journal_entry(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a journal entry."""
-    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id).first()
+    ws_id = user.get("workspace_id", 1)
+    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id, JournalEntry.workspace_id == ws_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     db.delete(entry)
@@ -128,16 +128,14 @@ def import_from_memory(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Import journal entries from agent memory/ files.
-
-    Scans each agent's workspace/memory/YYYY-MM-DD.md files.
-    Skips entries that already exist (same date + agent + source=memory).
-    """
+    """Import journal entries from agent memory/ files."""
     if not user.get("full_access") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="Owner only")
 
+    ws_id = user.get("workspace_id", 1)
+
     from backend.models import Agent
-    agents = {a.session_key: a for a in db.query(Agent).all() if a.session_key}
+    agents = {a.session_key: a for a in db.query(Agent).filter(Agent.workspace_id == ws_id).all() if a.session_key}
 
     imported = 0
     for agent_key, ws_dir in AGENT_WORKSPACES.items():
@@ -150,7 +148,6 @@ def import_from_memory(
             continue
 
         for md_file in sorted(memory_dir.glob("*.md")):
-            # Extract date from filename (YYYY-MM-DD.md)
             match = re.match(r"^(\d{4}-\d{2}-\d{2})\.md$", md_file.name)
             if not match:
                 continue
@@ -161,13 +158,13 @@ def import_from_memory(
 
             entry_date = datetime.strptime(file_date, "%Y-%m-%d").date()
 
-            # Skip if already imported
             existing = (
                 db.query(JournalEntry)
                 .filter(
                     JournalEntry.date == entry_date,
                     JournalEntry.agent_id == agent.id,
                     JournalEntry.source == "memory",
+                    JournalEntry.workspace_id == ws_id,
                 )
                 .first()
             )
@@ -183,6 +180,7 @@ def import_from_memory(
                 agent_id=agent.id,
                 content=content,
                 source="memory",
+                workspace_id=ws_id,
             )
             db.add(entry)
             imported += 1

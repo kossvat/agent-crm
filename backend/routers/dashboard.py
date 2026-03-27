@@ -24,7 +24,6 @@ def _period_range(period: str) -> tuple[date, date]:
         return start, start + timedelta(days=6)
     elif period == "month":
         start = today.replace(day=1)
-        # Last day of month
         if today.month == 12:
             end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
         else:
@@ -41,29 +40,30 @@ def get_dashboard(
     db: Session = Depends(get_db),
 ):
     """Dashboard with optional period filter (today/week/month/all)."""
-    agents = db.query(Agent).all()
+    ws_id = user.get("workspace_id", 1)
+
+    agents = db.query(Agent).filter(Agent.workspace_id == ws_id).all()
     start_date, end_date = _period_range(period)
 
-    # Active tasks — filtered by deadline within period (or no deadline if in_progress)
-    task_q = db.query(Task).filter(Task.status != TaskStatus.done)
+    # Active tasks — filtered by workspace + deadline within period
+    task_q = db.query(Task).filter(Task.workspace_id == ws_id, Task.status != TaskStatus.done)
     if period != "all":
         start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc)
         end_dt = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59, tzinfo=timezone.utc)
         task_q = task_q.filter(
-            # Tasks with deadline in range OR in_progress without deadline
             (Task.deadline.between(start_dt, end_dt)) |
             ((Task.deadline.is_(None)) & (Task.status == TaskStatus.in_progress))
         )
     active_tasks = task_q.count()
 
     # Cost for period
-    cost_q = db.query(func.coalesce(func.sum(Cost.cost_usd), 0.0))
+    cost_q = db.query(func.coalesce(func.sum(Cost.cost_usd), 0.0)).filter(Cost.workspace_id == ws_id)
     if period != "all":
         cost_q = cost_q.filter(Cost.date.between(start_date, end_date))
     period_cost = float(cost_q.scalar())
 
-    unread_alerts = db.query(Alert).filter(Alert.is_read == False).count()
-    recent_alerts = db.query(Alert).order_by(Alert.created.desc()).limit(10).all()
+    unread_alerts = db.query(Alert).filter(Alert.workspace_id == ws_id, Alert.is_read == False).count()
+    recent_alerts = db.query(Alert).filter(Alert.workspace_id == ws_id).order_by(Alert.created.desc()).limit(10).all()
 
     return DashboardResponse(
         agent_count=len(agents),

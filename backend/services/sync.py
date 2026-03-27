@@ -14,6 +14,9 @@ log = logging.getLogger("agent-crm.sync")
 
 SPENDING_DB = os.path.expanduser("~/projects/spending-tracker/spending.db")
 
+# Default workspace_id for sync operations (the local instance)
+DEFAULT_WORKSPACE_ID = 1
+
 # Map spending.db agent names to CRM names
 SPENDING_NAME_MAP = {
     "main": "Caramel",
@@ -24,7 +27,7 @@ SPENDING_NAME_MAP = {
 }
 
 
-def sync_agents(db: Session) -> int:
+def sync_agents(db: DBSession, workspace_id: int = DEFAULT_WORKSPACE_ID) -> int:
     """Sync agents from OpenClaw config into DB. Returns count of new agents."""
     configs = get_agent_configs()
     created = 0
@@ -32,13 +35,15 @@ def sync_agents(db: Session) -> int:
     for cfg in configs:
         existing = db.query(Agent).filter(Agent.name == cfg["name"]).first()
         if existing:
-            # Update fields if changed
             if cfg.get("emoji") and cfg["emoji"] != existing.emoji:
                 existing.emoji = cfg["emoji"]
             if cfg.get("role") and cfg["role"] != existing.role:
                 existing.role = cfg["role"]
             if cfg.get("bio") and cfg["bio"] != existing.bio:
                 existing.bio = cfg["bio"]
+            # Ensure workspace_id is set
+            if not existing.workspace_id:
+                existing.workspace_id = workspace_id
             continue
 
         agent = Agent(
@@ -49,6 +54,7 @@ def sync_agents(db: Session) -> int:
             bio=cfg.get("bio", ""),
             session_key=cfg.get("session_key", ""),
             status=AgentStatus.idle,
+            workspace_id=workspace_id,
         )
         db.add(agent)
         created += 1
@@ -62,7 +68,7 @@ def sync_agents(db: Session) -> int:
     return created
 
 
-def sync_sessions(db: Session):
+def sync_sessions(db: DBSession):
     """Update agent last_active and model from session files."""
     sessions = get_sessions()
 
@@ -86,15 +92,16 @@ def sync_sessions(db: Session):
     db.commit()
 
 
-def sync_crons(db: Session) -> int:
+def sync_crons(db: DBSession, workspace_id: int = DEFAULT_WORKSPACE_ID) -> int:
     """Sync crontab entries into DB. Returns count of new crons."""
     entries = get_crontab_entries()
     created = 0
 
     for entry in entries:
-        # Check if already tracked
         existing = db.query(Cron).filter(Cron.command == entry.get("command", "")).first()
         if existing:
+            if not existing.workspace_id:
+                existing.workspace_id = workspace_id
             continue
 
         cron = Cron(
@@ -102,6 +109,7 @@ def sync_crons(db: Session) -> int:
             schedule=entry.get("schedule", ""),
             command=entry.get("command", ""),
             status=CronStatus.active,
+            workspace_id=workspace_id,
         )
         db.add(cron)
         created += 1
@@ -135,12 +143,8 @@ def sync_daily_costs(db: DBSession):
         log.error(f"sync_daily_costs failed: {e}")
 
 
-def sync_costs_history(db: DBSession) -> int:
-    """Sync historical cost data from spending.db → crm costs table.
-
-    Uses upsert logic: skip rows that already exist (by agent_id + date).
-    Returns count of new rows inserted.
-    """
+def sync_costs_history(db: DBSession, workspace_id: int = DEFAULT_WORKSPACE_ID) -> int:
+    """Sync historical cost data from spending.db → crm costs table."""
     if not os.path.exists(SPENDING_DB):
         return 0
 
@@ -156,15 +160,12 @@ def sync_costs_history(db: DBSession) -> int:
         log.error(f"sync_costs_history read failed: {e}")
         return 0
 
-    # Build agent name → id map
     agents = {a.session_key: a.id for a in db.query(Agent).all() if a.session_key}
-    # Also map by spending.db name
     for spending_key, crm_name in SPENDING_NAME_MAP.items():
         agent = db.query(Agent).filter(Agent.name == crm_name).first()
         if agent and spending_key not in agents:
             agents[spending_key] = agent.id
 
-    # Get existing (agent_id, date) pairs to avoid duplicates
     existing = set()
     for cost in db.query(Cost.agent_id, Cost.date).all():
         existing.add((cost.agent_id, str(cost.date)))
@@ -175,7 +176,6 @@ def sync_costs_history(db: DBSession) -> int:
         if not agent_id:
             continue
         if (agent_id, date_str) in existing:
-            # Update existing row with fresh data
             db.query(Cost).filter(
                 Cost.agent_id == agent_id,
                 Cost.date == date_str,
@@ -193,6 +193,7 @@ def sync_costs_history(db: DBSession) -> int:
             output_tokens=int(output_tok or 0),
             cost_usd=round(float(cost_usd or 0), 6),
             model="",
+            workspace_id=workspace_id,
         )
         db.add(cost)
         existing.add((agent_id, date_str))
@@ -207,15 +208,15 @@ def sync_costs_history(db: DBSession) -> int:
     return inserted
 
 
-def full_sync(db: DBSession) -> dict:
+def full_sync(db: DBSession, workspace_id: int = DEFAULT_WORKSPACE_ID) -> dict:
     """Run all sync operations. Returns summary."""
     log.info("Starting full sync...")
 
-    new_agents = sync_agents(db)
+    new_agents = sync_agents(db, workspace_id)
     sync_sessions(db)
-    new_crons = sync_crons(db)
+    new_crons = sync_crons(db, workspace_id)
     sync_daily_costs(db)
-    new_costs = sync_costs_history(db)
+    new_costs = sync_costs_history(db, workspace_id)
 
     summary = {
         "new_agents": new_agents,

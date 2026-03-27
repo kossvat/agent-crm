@@ -14,7 +14,7 @@ from backend.database import create_tables, SessionLocal
 from backend.auth import get_current_user
 from backend.services.sync import full_sync
 
-from backend.routers import dashboard, agents, tasks, crons, costs, alerts, spending, system, files
+from backend.routers import dashboard, agents, tasks, crons, costs, alerts, spending, system, files, auth_router
 
 log = logging.getLogger("agent-crm")
 
@@ -96,6 +96,7 @@ app.add_middleware(
 )
 
 # Routers
+app.include_router(auth_router.router)
 app.include_router(dashboard.router)
 app.include_router(agents.router)
 app.include_router(tasks.router)

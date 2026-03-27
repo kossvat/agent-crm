@@ -16,6 +16,19 @@ def utcnow():
 
 # --- Enums ---
 
+class TierType(str, enum.Enum):
+    hobby = "hobby"
+    builder = "builder"
+    pro = "pro"
+
+
+TIER_AGENT_LIMITS = {
+    TierType.hobby: 3,
+    TierType.builder: 10,
+    TierType.pro: -1,  # unlimited
+}
+
+
 class AgentStatus(str, enum.Enum):
     active = "active"
     idle = "idle"
@@ -46,6 +59,36 @@ class AlertType(str, enum.Enum):
     info = "info"
 
 
+# --- Multi-tenant Models ---
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(Integer, unique=True, nullable=True)
+    email = Column(String(255), unique=True, nullable=True)
+    name = Column(String(100), nullable=False)
+    created = Column(DateTime(timezone=True), default=utcnow)
+    onboarding_complete = Column(Boolean, default=False)
+
+    workspaces = relationship("Workspace", back_populates="owner")
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    openclaw_url = Column(String(500), nullable=True)
+    api_key = Column(String(500), nullable=True)
+    tier = Column(SAEnum(TierType), default=TierType.hobby)
+    agent_limit = Column(Integer, default=3)
+    created = Column(DateTime(timezone=True), default=utcnow)
+
+    owner = relationship("User", back_populates="workspaces")
+
+
 # --- Models ---
 
 class Agent(Base):
@@ -61,6 +104,7 @@ class Agent(Base):
     role = Column(String(100), default="")
     bio = Column(Text, default="")
     daily_cost = Column(Float, default=0.0)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     created = Column(DateTime(timezone=True), default=utcnow)
 
     tasks = relationship("Task", back_populates="agent")
@@ -83,6 +127,7 @@ class Task(Base):
     category = Column(String(50), default="")
     reminder_1h_sent = Column(Boolean, default=False)
     reminder_due_sent = Column(Boolean, default=False)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     created = Column(DateTime(timezone=True), default=utcnow)
     updated = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -100,6 +145,7 @@ class Cron(Base):
     status = Column(SAEnum(CronStatus), default=CronStatus.active)
     last_run = Column(DateTime(timezone=True), nullable=True)
     next_run = Column(DateTime(timezone=True), nullable=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     created = Column(DateTime(timezone=True), default=utcnow)
 
     agent = relationship("Agent", back_populates="crons")
@@ -115,6 +161,7 @@ class Cost(Base):
     output_tokens = Column(Integer, default=0)
     cost_usd = Column(Float, default=0.0)
     model = Column(String(100), default="")
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
 
     agent = relationship("Agent", back_populates="costs")
 
@@ -127,6 +174,7 @@ class JournalEntry(Base):
     agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True)
     content = Column(Text, default="")
     source = Column(String(50), default="manual")  # "manual", "memory", "auto"
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     created = Column(DateTime(timezone=True), default=utcnow)
     updated = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -140,6 +188,7 @@ class Alert(Base):
     agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True)
     type = Column(SAEnum(AlertType), default=AlertType.info)
     message = Column(Text, nullable=False)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     created = Column(DateTime(timezone=True), default=utcnow)
     is_read = Column(Boolean, default=False)
 

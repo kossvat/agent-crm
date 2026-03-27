@@ -5,6 +5,31 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 
+# --- User / Workspace ---
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    telegram_id: Optional[int] = None
+    email: Optional[str] = None
+    name: str
+    created: datetime
+    onboarding_complete: bool
+
+
+class WorkspaceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    owner_id: int
+    openclaw_url: Optional[str] = None
+    tier: str
+    agent_limit: int
+    created: datetime
+
+
 # --- Agent ---
 
 class AgentResponse(BaseModel):

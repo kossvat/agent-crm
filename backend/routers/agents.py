@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import Agent
+from backend.models import Agent, Workspace, TIER_AGENT_LIMITS
 from backend.schemas import AgentResponse, AgentCreate, AgentUpdate
 from backend.auth import get_current_user
 from backend.services.openclaw import (
@@ -32,8 +32,9 @@ def list_agents(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all agents. Syncs models from openclaw.json on each call."""
-    agents = db.query(Agent).order_by(Agent.name).all()
+    """List all agents in the current workspace."""
+    ws_id = user.get("workspace_id", 1)
+    agents = db.query(Agent).filter(Agent.workspace_id == ws_id).order_by(Agent.name).all()
 
     # Sync models from openclaw.json → DB
     try:
@@ -80,7 +81,6 @@ def list_models(user: dict = Depends(get_current_user)):
         except Exception as e:
             log.warning(f"Anthropic models API failed: {e}")
 
-    # Fallback
     fallback = [
         "claude-opus-4-6",
         "claude-sonnet-4-6",
@@ -114,7 +114,8 @@ def get_agent(
     db: Session = Depends(get_db),
 ):
     """Get a single agent by ID."""
-    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    ws_id = user.get("workspace_id", 1)
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.workspace_id == ws_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
@@ -131,7 +132,8 @@ def update_agent(
     if not user.get("full_access") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="Owner only")
 
-    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    ws_id = user.get("workspace_id", 1)
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.workspace_id == ws_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -163,12 +165,26 @@ def create_agent(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a new agent."""
+    """Create a new agent. Checks tier agent limit."""
+    ws_id = user.get("workspace_id", 1)
+
+    # Tier limit check
+    workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
+    if workspace:
+        limit = workspace.agent_limit
+        if limit >= 0:  # -1 = unlimited
+            current_count = db.query(Agent).filter(Agent.workspace_id == ws_id).count()
+            if current_count >= limit:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Agent limit reached ({limit}). Upgrade your plan to add more agents.",
+                )
+
     existing = db.query(Agent).filter(Agent.name == data.name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Agent with this name already exists")
 
-    agent = Agent(**data.model_dump())
+    agent = Agent(**data.model_dump(), workspace_id=ws_id)
     db.add(agent)
     db.commit()
     db.refresh(agent)
