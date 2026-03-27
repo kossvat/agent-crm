@@ -89,6 +89,21 @@ def telegram_login(
     )
 
 
+@router.patch("/onboarding-complete")
+def complete_onboarding(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark onboarding as complete for current user."""
+    user_id = user.get("user_id")
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    db_user.onboarding_complete = True
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/me")
 def get_me(
     user: dict = Depends(get_current_user),

@@ -21,6 +21,9 @@ let agents = [];
 let allTasks = [];
 let kanbanFilter = 'all'; // agent filter
 let categoryFilter = 'all'; // category filter
+let jwtToken = localStorage.getItem('crm_jwt') || null;
+let currentUser = null;
+let currentWorkspace = null;
 
 const CATEGORIES = [
     { id: 'business', label: 'Business', color: '#4CAF50', icon: '💼' },
@@ -36,6 +39,7 @@ let refreshTimer = null;
 // --- API Client ---
 async function api(path, options = {}) {
     const headers = { 'Content-Type': 'application/json', ...options.headers };
+    if (jwtToken) headers['Authorization'] = `Bearer ${jwtToken}`;
     if (tg?.initData) headers['X-Telegram-Init-Data'] = tg.initData;
 
     const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
@@ -45,6 +49,324 @@ async function api(path, options = {}) {
     }
     if (resp.status === 204) return null;
     return resp.json();
+}
+
+// --- JWT Auth Flow ---
+async function authenticateUser() {
+    // Try JWT auth via Telegram initData
+    if (tg?.initData) {
+        try {
+            const authResp = await api('/auth/telegram', {
+                method: 'POST',
+                body: JSON.stringify({ init_data: tg.initData }),
+            });
+            jwtToken = authResp.access_token;
+            localStorage.setItem('crm_jwt', jwtToken);
+            currentUser = authResp.user;
+            return authResp.user;
+        } catch (e) {
+            console.warn('Telegram auth failed:', e.message);
+        }
+    }
+
+    // Fallback: try existing JWT token with /me
+    if (jwtToken) {
+        try {
+            const meResp = await api('/auth/me');
+            currentUser = meResp.user;
+            currentWorkspace = meResp.workspace;
+            return currentUser;
+        } catch (e) {
+            console.warn('JWT /me failed:', e.message);
+            jwtToken = null;
+            localStorage.removeItem('crm_jwt');
+        }
+    }
+
+    return null;
+}
+
+// --- Onboarding Wizard ---
+let onboardingStep = 1;
+let onboardingAgents = [];
+
+function showOnboarding() {
+    const overlay = document.getElementById('onboarding-overlay');
+    const nav = document.getElementById('bottom-nav');
+    overlay.classList.remove('hidden');
+    nav.style.display = 'none';
+    renderOnboardingStep();
+}
+
+function hideOnboarding() {
+    const overlay = document.getElementById('onboarding-overlay');
+    const nav = document.getElementById('bottom-nav');
+    overlay.classList.add('hidden');
+    nav.style.display = '';
+}
+
+function stepsIndicatorHTML(current, total = 4) {
+    return `<div class="onboarding-steps-indicator">
+        ${Array.from({ length: total }, (_, i) => {
+            const step = i + 1;
+            const cls = step < current ? 'done' : step === current ? 'active' : '';
+            return `<div class="step-dot ${cls}"></div>`;
+        }).join('')}
+    </div>`;
+}
+
+function renderOnboardingStep() {
+    const container = document.getElementById('onboarding-content');
+
+    switch (onboardingStep) {
+        case 1:
+            container.innerHTML = `
+                <div class="onboarding-step">
+                    ${stepsIndicatorHTML(1)}
+                    <div class="onboarding-emoji">🤖</div>
+                    <div class="onboarding-title">Welcome to Agent CRM</div>
+                    <div class="onboarding-subtitle">Manage your AI agent team in one place</div>
+                    <button class="onboarding-btn" onclick="onboardingNext()">Get Started</button>
+                </div>
+            `;
+            break;
+
+        case 2:
+            const agentListHTML = onboardingAgents.length
+                ? `<div class="onboarding-agents-list">${onboardingAgents.map(a =>
+                    `<div class="onboarding-agent-item">
+                        <div class="agent-emoji">${a.emoji}</div>
+                        <div class="agent-info">
+                            <div class="agent-name">${a.name}</div>
+                            <div class="agent-meta">${a.model || ''} · ${a.role || ''}</div>
+                        </div>
+                    </div>`
+                ).join('')}</div>`
+                : '';
+
+            container.innerHTML = `
+                <div class="onboarding-step">
+                    ${stepsIndicatorHTML(2)}
+                    <div class="onboarding-title">Connect Agents</div>
+                    <div class="onboarding-subtitle">How do you want to add agents?</div>
+                    <div class="onboarding-cards">
+                        <div class="onboarding-card" id="ob-card-import" onclick="showImportForm()">
+                            <div class="onboarding-card-icon">🔗</div>
+                            <div class="onboarding-card-title">OpenClaw Auto-Import</div>
+                            <div class="onboarding-card-desc">Connect your OpenClaw instance</div>
+                        </div>
+                        <div class="onboarding-card" id="ob-card-manual" onclick="showManualForm()">
+                            <div class="onboarding-card-icon">✋</div>
+                            <div class="onboarding-card-title">Add Manually</div>
+                            <div class="onboarding-card-desc">Create agents one by one</div>
+                        </div>
+                    </div>
+                    <div id="ob-form-area"></div>
+                    ${agentListHTML}
+                    <button class="onboarding-btn" onclick="onboardingNext()" ${onboardingAgents.length === 0 ? 'disabled' : ''}>Next</button>
+                </div>
+            `;
+            break;
+
+        case 3:
+            const agentOpts = onboardingAgents.map(a =>
+                `<option value="${a.id}">${a.emoji} ${a.name}</option>`
+            ).join('');
+            container.innerHTML = `
+                <div class="onboarding-step">
+                    ${stepsIndicatorHTML(3)}
+                    <div class="onboarding-title">Create Your First Task</div>
+                    <div class="onboarding-subtitle">Give your agents something to work on</div>
+                    <div class="onboarding-form">
+                        <div class="field">
+                            <label>Task Title</label>
+                            <input type="text" id="ob-task-title" placeholder="e.g. Write welcome post">
+                        </div>
+                        <div class="field">
+                            <label>Assign to Agent</label>
+                            <select id="ob-task-agent">
+                                <option value="">Unassigned</option>
+                                ${agentOpts}
+                            </select>
+                        </div>
+                    </div>
+                    <button class="onboarding-btn" onclick="onboardingCreateTask()">Create</button>
+                    <button class="onboarding-btn onboarding-btn-secondary" onclick="onboardingNext()">Skip</button>
+                </div>
+            `;
+            break;
+
+        case 4:
+            const tier = currentUser?.tier || currentWorkspace?.tier || 'hobby';
+            container.innerHTML = `
+                <div class="onboarding-step">
+                    ${stepsIndicatorHTML(4)}
+                    <div class="onboarding-emoji">🎉</div>
+                    <div class="onboarding-title">You're All Set!</div>
+                    <div class="onboarding-subtitle">Your workspace is ready</div>
+                    <div class="onboarding-summary">
+                        <div class="onboarding-summary-item">
+                            <span>Agents</span>
+                            <span class="onboarding-summary-value">${onboardingAgents.length}</span>
+                        </div>
+                        <div class="onboarding-summary-item">
+                            <span>Tier</span>
+                            <span class="onboarding-summary-value">${tier.charAt(0).toUpperCase() + tier.slice(1)}</span>
+                        </div>
+                    </div>
+                    <button class="onboarding-btn" onclick="finishOnboarding()">Open Dashboard</button>
+                </div>
+            `;
+            break;
+    }
+}
+
+window.onboardingNext = function() {
+    onboardingStep++;
+    renderOnboardingStep();
+};
+
+window.showImportForm = function() {
+    document.getElementById('ob-card-import').classList.add('active');
+    document.getElementById('ob-card-manual').classList.remove('active');
+    document.getElementById('ob-form-area').innerHTML = `
+        <div class="onboarding-form">
+            <div class="field">
+                <label>OpenClaw URL</label>
+                <input type="text" id="ob-openclaw-url" placeholder="http://localhost:3335">
+            </div>
+            <button class="onboarding-btn" onclick="importFromOpenClaw()" style="margin-top:0">Connect</button>
+        </div>
+    `;
+};
+
+window.showManualForm = function() {
+    document.getElementById('ob-card-manual').classList.add('active');
+    document.getElementById('ob-card-import').classList.remove('active');
+    document.getElementById('ob-form-area').innerHTML = `
+        <div class="onboarding-form">
+            <div class="field">
+                <label>Name</label>
+                <input type="text" id="ob-agent-name" placeholder="Agent name">
+            </div>
+            <div class="field">
+                <label>Emoji</label>
+                <input type="text" id="ob-agent-emoji" placeholder="🤖" maxlength="4">
+            </div>
+            <div class="field">
+                <label>Model</label>
+                <input type="text" id="ob-agent-model" placeholder="claude-sonnet-4-6">
+            </div>
+            <div class="field">
+                <label>Role</label>
+                <input type="text" id="ob-agent-role" placeholder="e.g. Developer, Writer">
+            </div>
+            <button class="onboarding-btn" onclick="addManualAgent()" style="margin-top:0">Add Agent</button>
+        </div>
+    `;
+};
+
+window.importFromOpenClaw = async function() {
+    const url = document.getElementById('ob-openclaw-url')?.value?.trim();
+    if (!url) return;
+    try {
+        // Try to fetch agents from OpenClaw instance
+        const resp = await fetch(`${url}/api/agents`);
+        if (!resp.ok) throw new Error('Failed to connect');
+        const clawAgents = await resp.json();
+
+        // Create each agent in our backend
+        for (const ca of clawAgents) {
+            try {
+                const created = await api('/agents', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: ca.name || ca.id,
+                        emoji: ca.emoji || '🤖',
+                        model: ca.model || '',
+                        role: ca.role || '',
+                    }),
+                });
+                onboardingAgents.push(created);
+            } catch (e) {
+                console.warn('Failed to create agent:', e.message);
+            }
+        }
+
+        if (tg) tg.HapticFeedback?.notificationOccurred('success');
+        renderOnboardingStep();
+    } catch (e) {
+        alert('Failed to connect: ' + e.message);
+    }
+};
+
+window.addManualAgent = async function() {
+    const name = document.getElementById('ob-agent-name')?.value?.trim();
+    const emoji = document.getElementById('ob-agent-emoji')?.value?.trim() || '🤖';
+    const model = document.getElementById('ob-agent-model')?.value?.trim() || '';
+    const role = document.getElementById('ob-agent-role')?.value?.trim() || '';
+
+    if (!name) { alert('Name is required'); return; }
+
+    try {
+        const created = await api('/agents', {
+            method: 'POST',
+            body: JSON.stringify({ name, emoji, model, role }),
+        });
+        onboardingAgents.push(created);
+        if (tg) tg.HapticFeedback?.notificationOccurred('success');
+        renderOnboardingStep();
+    } catch (e) {
+        alert('Failed to add agent: ' + e.message);
+    }
+};
+
+window.onboardingCreateTask = async function() {
+    const title = document.getElementById('ob-task-title')?.value?.trim();
+    if (!title) { alert('Title is required'); return; }
+
+    const agentId = document.getElementById('ob-task-agent')?.value || null;
+    try {
+        await api('/tasks', {
+            method: 'POST',
+            body: JSON.stringify({
+                title,
+                agent_id: agentId ? parseInt(agentId) : null,
+                status: 'todo',
+                priority: 'medium',
+            }),
+        });
+        if (tg) tg.HapticFeedback?.notificationOccurred('success');
+        onboardingNext();
+    } catch (e) {
+        alert('Failed to create task: ' + e.message);
+    }
+};
+
+window.finishOnboarding = async function() {
+    try {
+        await api('/auth/onboarding-complete', { method: 'PATCH' });
+    } catch (e) {
+        console.warn('Failed to mark onboarding complete:', e.message);
+    }
+    hideOnboarding();
+    navigate('dashboard');
+};
+
+// --- Tier Badge ---
+function getTierBadgeHTML() {
+    const tier = currentUser?.tier || currentWorkspace?.tier || null;
+    if (!tier) return '';
+    return `<span class="tier-badge tier-${tier}">${tier}</span>`;
+}
+
+function updateHeaderTier() {
+    const h1 = document.getElementById('page-title');
+    // Remove old badge if any
+    const oldBadge = h1.querySelector('.tier-badge');
+    if (oldBadge) oldBadge.remove();
+    const badge = getTierBadgeHTML();
+    if (badge) h1.insertAdjacentHTML('beforeend', badge);
 }
 
 // --- Router ---
@@ -61,6 +383,7 @@ function updateNav() {
     });
     const titles = { dashboard: 'Dashboard', kanban: 'Task Board', agents: 'Agents', crons: 'Crons', files: 'Files', journal: 'Journal', alerts: 'Alerts' };
     document.getElementById('page-title').textContent = titles[currentRoute] || 'Agent CRM';
+    updateHeaderTier();
 }
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -524,7 +847,11 @@ async function renderAgents(el) {
         </div>`
         : '';
 
-    el.innerHTML = restartBanner + (agents.length
+    const tier = currentUser?.tier || currentWorkspace?.tier || 'hobby';
+    const agentLimit = currentWorkspace?.agent_limit || 3;
+    const limitInfo = `<div class="agent-limit-info">🤖 ${agents.length}/${agentLimit} agents (${tier.charAt(0).toUpperCase() + tier.slice(1)})</div>`;
+
+    el.innerHTML = restartBanner + limitInfo + (agents.length
         ? agents.map(a => `<div class="card agent-card-full">
             <div class="agent-header">
                 <div class="agent-emoji">${a.emoji}</div>
@@ -1042,16 +1369,42 @@ function timeAgo(dateStr) {
 }
 
 // --- Init ---
-try {
-    const validRoutes = ['dashboard', 'kanban', 'agents', 'crons', 'files', 'journal', 'alerts'];
-    let initHash = window.location.hash.slice(1);
-    // Strip Telegram WebApp params from hash
-    if (initHash.includes('tgWebApp') || initHash.includes('=')) {
-        initHash = '';
+(async function init() {
+    try {
+        // Authenticate first
+        const user = await authenticateUser();
+
+        // Load workspace info if we have a token
+        if (jwtToken && !currentWorkspace) {
+            try {
+                const meResp = await api('/auth/me');
+                currentWorkspace = meResp.workspace;
+                if (!currentUser) currentUser = meResp.user;
+            } catch (e) {
+                console.warn('Failed to load /me:', e.message);
+            }
+        }
+
+        // Check onboarding
+        if (user && user.onboarding_complete === false) {
+            // Load existing agents for onboarding state
+            try {
+                const existingAgents = await api('/agents');
+                onboardingAgents = existingAgents || [];
+            } catch (e) {}
+            showOnboarding();
+        }
+
+        const validRoutes = ['dashboard', 'kanban', 'agents', 'crons', 'files', 'journal', 'alerts'];
+        let initHash = window.location.hash.slice(1);
+        if (initHash.includes('tgWebApp') || initHash.includes('=')) {
+            initHash = '';
+        }
+        navigate(validRoutes.includes(initHash) ? initHash : 'dashboard');
+    } catch (e) {
+        console.error('Init error:', e);
+        navigate('dashboard');
     }
-    navigate(validRoutes.includes(initHash) ? initHash : 'dashboard');
-} catch (e) {
-    console.error('Init error:', e);
-    navigate('dashboard');
-}
-refreshTimer = setInterval(() => { if (currentRoute === 'dashboard') render(); }, REFRESH_INTERVAL);
+
+    refreshTimer = setInterval(() => { if (currentRoute === 'dashboard') render(); }, REFRESH_INTERVAL);
+})();
