@@ -19,7 +19,7 @@ DATA_DIR.mkdir(exist_ok=True)
 DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'crm.db'}")
 
 # OpenClaw
-OPENCLAW_BIN: str = os.getenv("OPENCLAW_BIN", "openclaw")
+OPENCLAW_BIN: str = os.getenv("OPENCLAW_BIN", "/home/caramel/.npm-global/bin/openclaw")
 OPENCLAW_DIR: str = os.getenv("OPENCLAW_DIR", str(Path.home() / ".openclaw"))
 
 # Server

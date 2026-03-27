@@ -25,5 +25,31 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def create_tables():
-    """Create all tables. Call on startup."""
+    """Create all tables and add missing columns."""
     Base.metadata.create_all(bind=engine)
+    _migrate_columns()
+
+
+def _migrate_columns():
+    """Add missing columns to existing tables (SQLite doesn't do this via create_all)."""
+    import sqlalchemy
+    inspector = sqlalchemy.inspect(engine)
+
+    migrations = {
+        "agents": {
+            "role": "VARCHAR(100) DEFAULT ''",
+            "bio": "TEXT DEFAULT ''",
+        },
+    }
+
+    with engine.connect() as conn:
+        for table_name, columns in migrations.items():
+            if not inspector.has_table(table_name):
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table_name)}
+            for col_name, col_type in columns.items():
+                if col_name not in existing:
+                    conn.execute(sqlalchemy.text(
+                        f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
+                    ))
+                    conn.commit()

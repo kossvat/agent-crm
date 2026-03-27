@@ -14,6 +14,8 @@ class AgentResponse(BaseModel):
     name: str
     emoji: str
     model: str
+    role: str
+    bio: str
     status: str
     session_key: str
     last_active: Optional[datetime]
@@ -25,7 +27,16 @@ class AgentCreate(BaseModel):
     name: str
     emoji: str = "🤖"
     model: str = ""
+    role: str = ""
+    bio: str = ""
     session_key: str = ""
+
+
+class AgentUpdate(BaseModel):
+    model: Optional[str] = None
+    role: Optional[str] = None
+    bio: Optional[str] = None
+    status: Optional[str] = None
 
 
 # --- Task ---
@@ -35,6 +46,7 @@ class TaskCreate(BaseModel):
     description: str = ""
     status: str = "todo"
     priority: str = "medium"
+    category: str = ""
     agent_id: Optional[int] = None
     created_by: str = ""
     deadline: Optional[datetime] = None
@@ -45,6 +57,7 @@ class TaskUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
     priority: Optional[str] = None
+    category: Optional[str] = None
     agent_id: Optional[int] = None
     deadline: Optional[datetime] = None
 
@@ -57,6 +70,7 @@ class TaskResponse(BaseModel):
     description: str
     status: str
     priority: str
+    category: str = ""
     agent_id: Optional[int]
     created_by: str
     deadline: Optional[datetime]
@@ -82,6 +96,20 @@ class CronResponse(BaseModel):
     created: datetime
 
 
+# --- Cron (OpenClaw format) ---
+
+class CronOCResponse(BaseModel):
+    """Cron job as returned from OpenClaw CLI."""
+    id: str
+    name: str
+    schedule: str
+    agent_id: Optional[str] = None
+    enabled: bool = True
+    description: str = ""
+    model: str = ""
+    next_run: Optional[str] = None
+
+
 # --- Cost ---
 
 class CostResponse(BaseModel):
@@ -103,6 +131,39 @@ class CostSummary(BaseModel):
     total_cost: float
     total_input_tokens: int
     total_output_tokens: int
+
+
+# --- Journal ---
+
+class JournalEntryCreate(BaseModel):
+    date: date
+    agent_id: Optional[int] = None
+    content: str
+    source: str = "manual"
+
+
+class JournalEntryUpdate(BaseModel):
+    content: Optional[str] = None
+    agent_id: Optional[int] = None
+
+
+class JournalEntryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    date: date
+    agent_id: Optional[int]
+    content: str
+    source: str
+    created: datetime
+    updated: datetime
+    agent: Optional[AgentResponse] = None
+
+
+class JournalDayResponse(BaseModel):
+    date: date
+    entries: list[JournalEntryResponse]
+    total_cost: float = 0.0
 
 
 # --- Alert ---

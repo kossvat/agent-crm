@@ -58,6 +58,8 @@ class Agent(Base):
     status = Column(SAEnum(AgentStatus), default=AgentStatus.idle)
     session_key = Column(String(255), default="")
     last_active = Column(DateTime(timezone=True), nullable=True)
+    role = Column(String(100), default="")
+    bio = Column(Text, default="")
     daily_cost = Column(Float, default=0.0)
     created = Column(DateTime(timezone=True), default=utcnow)
 
@@ -78,6 +80,7 @@ class Task(Base):
     agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True)
     created_by = Column(String(100), default="")
     deadline = Column(DateTime(timezone=True), nullable=True)
+    category = Column(String(50), default="")
     reminder_1h_sent = Column(Boolean, default=False)
     reminder_due_sent = Column(Boolean, default=False)
     created = Column(DateTime(timezone=True), default=utcnow)
@@ -114,6 +117,20 @@ class Cost(Base):
     model = Column(String(100), default="")
 
     agent = relationship("Agent", back_populates="costs")
+
+
+class JournalEntry(Base):
+    __tablename__ = "journal_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True)
+    content = Column(Text, default="")
+    source = Column(String(50), default="manual")  # "manual", "memory", "auto"
+    created = Column(DateTime(timezone=True), default=utcnow)
+    updated = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    agent = relationship("Agent")
 
 
 class Alert(Base):

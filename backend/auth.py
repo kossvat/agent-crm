@@ -103,6 +103,16 @@ def get_current_user(request: Request) -> dict:
             "username": agent_header,
         }
 
+    # DEV_MODE bypass for screenshots/testing
+    if DEV_MODE and _is_local_request(request):
+        return {
+            "user_id": OWNER_USER_ID,
+            "is_owner": True,
+            "full_access": True,
+            "agent_id": None,
+            "username": "dev",
+        }
+
     # Telegram Mini App auth
     init_data = request.headers.get("X-Telegram-Init-Data", "")
     if not init_data:

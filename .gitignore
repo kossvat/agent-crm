@@ -3,3 +3,6 @@ data/
 __pycache__/
 *.pyc
 .ruff_cache/
+crm.db
+*.pdf
+screenshots/

@@ -1,5 +1,6 @@
 """Agent CRM — FastAPI application."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,9 +14,33 @@ from backend.database import create_tables, SessionLocal
 from backend.auth import get_current_user
 from backend.services.sync import full_sync
 
-from backend.routers import dashboard, agents, tasks, crons, costs, alerts
+from backend.routers import dashboard, agents, tasks, crons, costs, alerts, spending, system, files
 
 log = logging.getLogger("agent-crm")
+
+WATCHDOG_INTERVAL = 300  # 5 minutes
+
+
+async def watchdog_loop():
+    """Background watchdog — runs every 5 min, pure Python, no LLM."""
+    from backend.services.watchdog import run as watchdog_run
+    from backend.services.sync import sync_costs_history, sync_daily_costs
+    from backend.database import SessionLocal
+    await asyncio.sleep(60)  # wait 1 min after startup
+    while True:
+        try:
+            watchdog_run()
+        except Exception as e:
+            log.error(f"Watchdog error: {e}")
+        # Sync costs every cycle (idempotent — upserts existing rows)
+        try:
+            db = SessionLocal()
+            sync_daily_costs(db)
+            sync_costs_history(db)
+            db.close()
+        except Exception as e:
+            log.error(f"Costs sync error: {e}")
+        await asyncio.sleep(WATCHDOG_INTERVAL)
 
 
 @asynccontextmanager
@@ -34,7 +59,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"Initial sync failed: {e}")
 
+    # Start watchdog background task
+    watchdog_task = asyncio.create_task(watchdog_loop())
+    log.info("Watchdog started (every 5 min)")
+
     yield
+
+    # Cleanup
+    watchdog_task.cancel()
+    try:
+        await watchdog_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
@@ -66,6 +102,12 @@ app.include_router(tasks.router)
 app.include_router(crons.router)
 app.include_router(costs.router)
 app.include_router(alerts.router)
+app.include_router(spending.router)
+app.include_router(system.router)
+app.include_router(files.router)
+
+from backend.routers import journal
+app.include_router(journal.router)
 
 
 # Sync endpoint
@@ -83,6 +125,24 @@ def trigger_sync(user: dict = Depends(get_current_user)):
 # Serve frontend static files
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 if FRONTEND_DIR.exists():
+    from fastapi.responses import FileResponse
+
+    @app.get("/app.js")
+    async def serve_app_js():
+        return FileResponse(
+            str(FRONTEND_DIR / "app.js"),
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+
+    @app.get("/style.css")
+    async def serve_style_css():
+        return FileResponse(
+            str(FRONTEND_DIR / "style.css"),
+            media_type="text/css",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 

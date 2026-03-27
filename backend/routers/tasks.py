@@ -56,12 +56,13 @@ def list_tasks(
     status: Optional[str] = Query(None),
     agent_id: Optional[int] = Query(None),
     priority: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
     period: Optional[str] = Query(None, pattern="^(today|week|month|all)$"),
     has_deadline: Optional[bool] = Query(None),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List tasks with optional filters including time period."""
+    """List tasks with optional filters including time period and category."""
     q = db.query(Task).options(joinedload(Task.agent))
 
     # Access control: non-admin agents see only their tasks
@@ -74,6 +75,8 @@ def list_tasks(
         q = q.filter(Task.agent_id == agent_id)
     if priority:
         q = q.filter(Task.priority == priority)
+    if category:
+        q = q.filter(Task.category == category)
     if has_deadline is True:
         q = q.filter(Task.deadline.isnot(None))
     if has_deadline is False:
