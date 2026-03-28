@@ -12,7 +12,7 @@ PLANS = {
     "pro_20": {
         "name": "Pro",
         "monthly_cost": 20,
-        "weekly_reset_utc_hour": 1,  # Sunday 01:00 UTC = Saturday 8pm EST
+        "weekly_reset_utc_hour": 0,  # Sunday 00:00 UTC = Saturday 8pm EDT
         "weekly_reset_day": 6,       # 6 = Sunday
         "session_hours": 5,
         "weekly_limits": {
@@ -29,7 +29,7 @@ PLANS = {
     "max_100": {
         "name": "Max 5x",
         "monthly_cost": 100,
-        "weekly_reset_utc_hour": 1,
+        "weekly_reset_utc_hour": 0,
         "weekly_reset_day": 6,
         "session_hours": 5,
         "weekly_limits": {
@@ -46,7 +46,7 @@ PLANS = {
     "max_200": {
         "name": "Max 20x",
         "monthly_cost": 200,
-        "weekly_reset_utc_hour": 1,
+        "weekly_reset_utc_hour": 0,
         "weekly_reset_day": 6,
         "session_hours": 5,
         "weekly_limits": {

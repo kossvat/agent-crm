@@ -174,20 +174,34 @@ def spending_current(
     s_models = _build_model_usage(s_model_data, session_limits)
     s_all_pct = round(s_total_tokens / session_all_limit * 100, 1) if session_all_limit > 0 else 0
 
-    # Session reset: when oldest message in window expires
-    oldest = conn.execute(
-        "SELECT MIN(timestamp) FROM usage_log WHERE timestamp >= ?", (session_start,)
-    ).fetchone()[0]
+    # Session reset: find when the bulk of tokens were consumed
+    # Use the timestamp where 50% of tokens were accumulated (median weighted by tokens)
+    # This gives a more meaningful "resets in" that matches Anthropic's display
+    session_msgs = conn.execute("""
+        SELECT timestamp, output_tokens FROM usage_log
+        WHERE timestamp >= ?
+        ORDER BY timestamp ASC
+    """, (session_start,)).fetchall()
+
     s_reset_min = None
-    if oldest:
-        try:
-            oldest_dt = datetime.fromisoformat(oldest.replace('Z', '+00:00'))
-            reset_at = oldest_dt + timedelta(hours=session_hours)
-            diff = reset_at - now
-            if diff.total_seconds() > 0:
-                s_reset_min = int(diff.total_seconds() / 60)
-        except (ValueError, TypeError):
-            pass
+    if session_msgs and s_total_tokens > 0:
+        cumulative = 0
+        half_tokens = s_total_tokens * 0.5
+        median_ts = None
+        for ts, tokens in session_msgs:
+            cumulative += (tokens or 0)
+            if cumulative >= half_tokens:
+                median_ts = ts
+                break
+        if median_ts:
+            try:
+                median_dt = datetime.fromisoformat(median_ts.replace('Z', '+00:00'))
+                reset_at = median_dt + timedelta(hours=session_hours)
+                diff = reset_at - now
+                if diff.total_seconds() > 0:
+                    s_reset_min = int(diff.total_seconds() / 60)
+            except (ValueError, TypeError):
+                pass
 
     # Per-agent today
     agents = conn.execute(
