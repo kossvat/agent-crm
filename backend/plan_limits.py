@@ -14,8 +14,8 @@ Plans scale proportionally: Pro=1x, Max5x=5x, Max20x=20x.
 """
 
 # Base cost limits (Pro $20 = 1x)
-# Max $100 weekly = $243, session = $177
-# Pro = Max/5 = weekly $48.6, session $35.4
+# Max $100: weekly $243 (95%), session $177 (33%)
+# Pro = Max/5
 BASE_WEEKLY_COST = 48.6    # dollars per week
 BASE_SESSION_COST = 35.4   # dollars per 5hr session
 
