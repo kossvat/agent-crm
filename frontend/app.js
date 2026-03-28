@@ -689,16 +689,15 @@ async function renderKanban(el) {
     // Setup card clicks
     el.querySelectorAll('.kanban-card').forEach(card => {
         card.addEventListener('click', (e) => {
-            // Don't trigger on drag
             if (card.classList.contains('sortable-chosen')) return;
-            // Inline expand description on desc click
-            const desc = card.querySelector('.kanban-desc');
-            if (desc && desc.contains(e.target)) {
-                card.classList.toggle('expanded');
-                if (tg) tg.HapticFeedback?.impactOccurred('light');
+            // Edit button opens modal
+            if (e.target.closest('.kanban-edit-btn')) {
+                openTaskModal(parseInt(card.dataset.id));
                 return;
             }
-            openTaskModal(parseInt(card.dataset.id));
+            // Everything else toggles expand
+            card.classList.toggle('expanded');
+            if (tg) tg.HapticFeedback?.impactOccurred('light');
         });
     });
 
@@ -743,6 +742,7 @@ function kanbanCardHTML(t) {
                 ${dlBadge}
                 <span>${timeAgo(t.created)}</span>
             </div>
+            <button class="kanban-edit-btn">✏️ Edit</button>
         </div>
     `;
 }
