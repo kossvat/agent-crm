@@ -463,7 +463,8 @@ async function renderDashboard(el) {
     const wPct = Math.min(100, w.pct || 0).toFixed(1);
     const sPct = Math.min(100, s.pct || 0).toFixed(1);
     const fmtReset = (min) => {
-        if (!min && min !== 0) return '';
+        if (min === null || min === undefined) return '';
+        if (min <= 0) return 'Resetting soon';
         const h = Math.floor(min / 60), m = min % 60;
         return h > 0 ? `Resets in ${h}hr ${m}min` : `Resets in ${m}min`;
     };
