@@ -192,32 +192,26 @@ def spending_current(
             "pct": min(pct, 999.9),
         })
 
-    # Session reset: cost-weighted median timestamp
-    session_msgs = conn.execute("""
-        SELECT timestamp, cost_total FROM usage_log
-        WHERE timestamp >= ?
-        ORDER BY timestamp ASC
-    """, (session_start,)).fetchall()
+    # Session reset: Anthropic shows when the window slides enough to drop usage
+    # "Resets in X min" = when the oldest significant chunk expires from the 5hr window
+    # Use the first message in the window — that's when the window started filling
+    oldest_ts = conn.execute(
+        "SELECT MIN(timestamp) FROM usage_log WHERE timestamp >= ?", (session_start,)
+    ).fetchone()[0]
 
     s_reset_min = None
-    if session_msgs and s_total_cost > 0:
-        cumulative = 0.0
-        half_cost = s_total_cost * 0.5
-        median_ts = None
-        for ts, cost in session_msgs:
-            cumulative += float(cost or 0)
-            if cumulative >= half_cost:
-                median_ts = ts
-                break
-        if median_ts:
-            try:
-                median_dt = datetime.fromisoformat(median_ts.replace('Z', '+00:00'))
-                reset_at = median_dt + timedelta(hours=session_hours)
-                diff = reset_at - now
-                if diff.total_seconds() > 0:
-                    s_reset_min = int(diff.total_seconds() / 60)
-            except (ValueError, TypeError):
-                pass
+    if oldest_ts:
+        try:
+            oldest_dt = datetime.fromisoformat(oldest_ts.replace('Z', '+00:00'))
+            # The oldest message will "fall off" the window at oldest + 5hr
+            reset_at = oldest_dt + timedelta(hours=session_hours)
+            diff = reset_at - now
+            if diff.total_seconds() > 0:
+                s_reset_min = int(diff.total_seconds() / 60)
+            else:
+                s_reset_min = 0
+        except (ValueError, TypeError):
+            pass
 
     # Per-agent today
     agents = conn.execute(

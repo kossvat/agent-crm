@@ -516,7 +516,8 @@ async function renderDashboard(el) {
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
                 <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>
             </div>
-            ${s.models?.length ? `<div class="model-breakdown">${renderModels(s.models)}</div>` : ''}
+            ${w.models?.length ? `<div class="section-label">Weekly by model</div><div class="model-breakdown">${renderModels(w.models)}</div>` : ''}
+            ${s.models?.length ? `<div class="section-label">Session by model</div><div class="model-breakdown">${renderModels(s.models)}</div>` : ''}
         </div>
         ${periodFilterHTML()}
         <div class="summary-grid">

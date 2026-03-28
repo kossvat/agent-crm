@@ -14,10 +14,10 @@ Plans scale proportionally: Pro=1x, Max5x=5x, Max20x=20x.
 """
 
 # Base cost limits (Pro $20 = 1x)
-# Max $100: weekly $243 (95%), session $177 (33%)
+# Max $100: weekly $243 (96%), session $142 (43%)
 # Pro = Max/5
 BASE_WEEKLY_COST = 48.6    # dollars per week
-BASE_SESSION_COST = 35.4   # dollars per 5hr session
+BASE_SESSION_COST = 28.5   # dollars per 5hr session ($142.4 / 5x)
 
 PLAN_TIERS = [
     {"name": "Pro", "cost": 20, "multiplier": 1},
