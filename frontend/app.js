@@ -1277,11 +1277,18 @@ async function renderCrons(el) {
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-                ${c.description ? `<div class="cron-desc">${escapeHtml(c.description)}</div>` : ''}
+                ${c.description ? `<div class="cron-desc-wrap" onclick="toggleCronExpand(this)"><div class="cron-desc">${escapeHtml(c.description)}</div><div class="cron-expand">ещё ↓</div></div>` : ''}
             </div>`;
         }).join('')
         : '<div class="empty-state"><div class="empty-icon">⏰</div><p>No cron jobs</p></div>';
 }
+
+window.toggleCronExpand = function(wrap) {
+    const expanded = wrap.classList.toggle('expanded');
+    const btn = wrap.querySelector('.cron-expand');
+    if (btn) btn.textContent = expanded ? 'свернуть ↑' : 'ещё ↓';
+    if (tg) tg.HapticFeedback?.impactOccurred('light');
+};
 
 window.toggleCron = async function(id, enabled) {
     try {
