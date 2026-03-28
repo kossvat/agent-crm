@@ -44,7 +44,7 @@ def spending_current(
 ):
     """Current spending with budget info and per-model breakdown."""
     monthly_budget = _get_budget(user, db)
-    weekly_budget = round(monthly_budget / 4.33, 2)
+    weekly_budget = round(monthly_budget / 4, 2)  # ~25% of monthly per week
 
     conn = _get_conn()
     if not conn:
@@ -76,25 +76,48 @@ def spending_current(
         "SELECT COALESCE(SUM(total_cost), 0) FROM daily_summary WHERE date >= ?", (month_start,)
     ).fetchone()[0]
 
+    # Infer model for NULL entries based on agent's most common model
+    agent_model_map = {}
+    agent_model_rows = conn.execute("""
+        SELECT agent, model, COUNT(*) as cnt
+        FROM usage_log
+        WHERE model IS NOT NULL AND model != ''
+        GROUP BY agent, model
+        ORDER BY agent, cnt DESC
+    """).fetchall()
+    for agent, model, cnt in agent_model_rows:
+        if agent not in agent_model_map:
+            agent_model_map[agent] = model
+
     # Per-model breakdown (current week)
     model_rows = conn.execute("""
-        SELECT COALESCE(NULLIF(model, ''), 'unknown') as m,
+        SELECT COALESCE(NULLIF(model, ''), '') as m,
+               agent,
                SUM(cost_total) as cost,
                COUNT(*) as msgs
         FROM usage_log
         WHERE date >= ?
-        GROUP BY m
+        GROUP BY m, agent
         ORDER BY cost DESC
     """, (week_start,)).fetchall()
 
+    model_totals = {}
+    for m, agent, cost, msgs in model_rows:
+        resolved = m if m else agent_model_map.get(agent, 'unknown')
+        if resolved not in model_totals:
+            model_totals[resolved] = {"cost": 0.0, "messages": 0}
+        model_totals[resolved]["cost"] += float(cost)
+        model_totals[resolved]["messages"] += msgs
+
     by_model = []
-    for m, cost, msgs in model_rows:
-        pct = round(cost / weekly_budget * 100, 1) if weekly_budget > 0 else 0
+    total_week_cost = sum(v["cost"] for v in model_totals.values())
+    for m, v in sorted(model_totals.items(), key=lambda x: -x[1]["cost"]):
+        pct = round(v["cost"] / total_week_cost * 100, 1) if total_week_cost > 0 else 0
         by_model.append({
             "model": m,
-            "cost": round(float(cost), 2),
-            "messages": msgs,
-            "pct": min(pct, 999.9),
+            "cost": round(v["cost"], 2),
+            "messages": v["messages"],
+            "pct": pct,
         })
 
     # Per-agent (today)

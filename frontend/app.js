@@ -462,9 +462,10 @@ async function renderDashboard(el) {
     const modelColors = {'claude-opus-4-6':'#8B5CF6','claude-sonnet-4-6':'#3B82F6','claude-haiku-35-20241022':'#10B981','unknown':'#6B7280'};
     const autoColor = (m, i) => modelColors[m] || ['#F59E0B','#EF4444','#EC4899','#14B8A6'][i % 4];
 
+    const maxModelCost = Math.max(...(spending.by_model || []).map(m => m.cost), 1);
     const modelBarsHTML = (spending.by_model || []).map((m, i) => {
         const color = autoColor(m.model, i);
-        const barW = Math.min(100, m.pct || 0);
+        const barW = Math.min(100, (m.cost / maxModelCost) * 100);
         const shortName = m.model.replace('claude-', '').replace('-20241022', '');
         return `<div class="model-row">
             <div class="model-info">
