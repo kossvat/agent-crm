@@ -19,10 +19,10 @@ PLANS = {
         "monthly_cost": 20,
         "window_hours": 5,
         "limits": {
-            "_all": 200_000,
-            "claude-sonnet-4-6": 180_000,
-            "claude-opus-4-6": 50_000,
-            "claude-haiku-35-20241022": 400_000,
+            "_all": 55_000,
+            "claude-sonnet-4-6": 50_000,
+            "claude-opus-4-6": 20_000,
+            "claude-haiku-35-20241022": 100_000,
         },
     },
     "max_100": {
@@ -30,10 +30,10 @@ PLANS = {
         "monthly_cost": 100,
         "window_hours": 5,
         "limits": {
-            "_all": 500_000,
-            "claude-sonnet-4-6": 450_000,
-            "claude-opus-4-6": 150_000,
-            "claude-haiku-35-20241022": 1_000_000,
+            "_all": 277_000,
+            "claude-sonnet-4-6": 250_000,
+            "claude-opus-4-6": 100_000,
+            "claude-haiku-35-20241022": 500_000,
         },
     },
     "max_200": {
@@ -41,9 +41,9 @@ PLANS = {
         "monthly_cost": 200,
         "window_hours": 5,
         "limits": {
-            "_all": 1_000_000,
-            "claude-sonnet-4-6": 900_000,
-            "claude-opus-4-6": 300_000,
+            "_all": 1_100_000,
+            "claude-sonnet-4-6": 1_000_000,
+            "claude-opus-4-6": 400_000,
             "claude-haiku-35-20241022": 2_000_000,
         },
     },
