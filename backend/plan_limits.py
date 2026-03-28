@@ -31,7 +31,7 @@ BASE_SESSION = {
 PLAN_TIERS = [
     {"name": "Pro", "cost": 20, "multiplier": 1},
     {"name": "Max 5x", "cost": 100, "multiplier": 5},
-    {"name": "Max 20x", "cost": 200, "multiplier": 10},
+    {"name": "Max 20x", "cost": 200, "multiplier": 20},
 ]
 
 # Common config
