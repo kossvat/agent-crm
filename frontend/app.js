@@ -445,7 +445,7 @@ async function renderDashboard(el) {
     const [data, sysStatus, spending, dailyTimeline, weeklyTimeline, sessions] = await Promise.all([
         api(`/dashboard${params}`),
         api('/system/status').catch(() => ({ status: 'unknown', gateway: false })),
-        api('/spending/current').catch(() => ({ today: 0, week: 0, month: 0, budget: { monthly: 100, weekly: 23.09, weekly_used: 0, weekly_pct: 0, monthly_used: 0, monthly_pct: 0 }, by_model: [], agents: [] })),
+        api('/spending/current').catch(() => ({ today: 0, month: 0, plan: 'Pro', window_hours: 5, usage: { all: { used: 0, limit: 44000, pct: 0 }, models: [] }, agents: [] })),
         api('/spending/timeline?range=day').catch(() => ({ labels: [], data: [] })),
         api('/spending/timeline?range=week').catch(() => ({ labels: [], data: [] })),
         api('/spending/sessions').catch(() => []),
@@ -456,26 +456,29 @@ async function renderDashboard(el) {
     const taskLabel = periodFilter === 'all' ? 'Active Tasks' : `Tasks (${periodFilter})`;
     const statusIcon = sysStatus.gateway ? '🟢' : '🔴';
     const statusText = sysStatus.gateway ? 'Running' : 'Stopped';
-    const b = spending.budget || {};
-    const weeklyPct = Math.min(100, b.weekly_pct || 0).toFixed(1);
-    const monthlyPct = Math.min(100, b.monthly_pct || 0).toFixed(1);
+
+    // Usage data (5hr rolling window like Anthropic)
+    const u = spending.usage || { all: { used: 0, limit: 1, pct: 0 }, models: [] };
+    const allPct = Math.min(100, u.all.pct || 0).toFixed(1);
+    const resetMin = spending.resets_in_minutes;
+    const resetText = resetMin ? `Resets in ${Math.floor(resetMin/60)}hr ${resetMin%60}min` : '';
     const modelColors = {'claude-opus-4-6':'#8B5CF6','claude-sonnet-4-6':'#3B82F6','claude-haiku-35-20241022':'#10B981','unknown':'#6B7280'};
     const autoColor = (m, i) => modelColors[m] || ['#F59E0B','#EF4444','#EC4899','#14B8A6'][i % 4];
 
-    const maxModelCost = Math.max(...(spending.by_model || []).map(m => m.cost), 1);
-    const modelBarsHTML = (spending.by_model || []).map((m, i) => {
+    const modelBarsHTML = (u.models || []).map((m, i) => {
         const color = autoColor(m.model, i);
-        const barW = Math.min(100, (m.cost / maxModelCost) * 100);
+        const barW = Math.min(100, m.pct || 0);
         const shortName = m.model.replace('claude-', '').replace('-20241022', '');
+        const tokensK = (m.used / 1000).toFixed(1);
+        const limitK = (m.limit / 1000).toFixed(0);
         return `<div class="model-row">
             <div class="model-info">
                 <span class="model-dot" style="background:${color}"></span>
                 <span class="model-name">${shortName}</span>
-                <span class="model-cost">$${m.cost.toFixed(2)}</span>
-                <span class="model-msgs">${m.messages} msgs</span>
-                <span class="model-pct">${m.pct.toFixed(1)}%</span>
+                <span class="model-pct">${m.pct.toFixed(1)}% used</span>
             </div>
             <div class="progress-track model-track"><div class="progress-fill" style="width:${barW}%;background:${color}"></div></div>
+            <div class="model-meta">${tokensK}K / ${limitK}K tokens · $${m.cost.toFixed(2)} · ${m.messages} msgs</div>
         </div>`;
     }).join('');
 
@@ -488,11 +491,15 @@ async function renderDashboard(el) {
             </div>
         </div>
         <div class="budget-bar">
-            <div class="budget-label">Weekly Usage: $${(b.weekly_used||0).toFixed(2)} / $${(b.weekly||0).toFixed(2)} (${weeklyPct}%)</div>
-            <div class="progress-track"><div class="progress-fill ${weeklyPct > 90 ? 'progress-danger' : weeklyPct > 80 ? 'progress-warn' : ''}" style="width:${weeklyPct}%"></div></div>
+            <div class="budget-header">
+                <span class="budget-plan">${spending.plan || 'Pro'} Plan</span>
+                <span class="budget-reset">${resetText}</span>
+            </div>
+            <div class="budget-label">All models: ${allPct}% used</div>
+            <div class="progress-track"><div class="progress-fill ${allPct > 90 ? 'progress-danger' : allPct > 80 ? 'progress-warn' : ''}" style="width:${allPct}%"></div></div>
             <div class="budget-meta">
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
-                <span class="budget-tag">📆 Month: $${(b.monthly_used||0).toFixed(2)} / $${(b.monthly||0).toFixed(2)} (${monthlyPct}%)</span>
+                <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>
             </div>
             ${modelBarsHTML ? `<div class="model-breakdown">${modelBarsHTML}</div>` : ''}
         </div>
@@ -942,14 +949,14 @@ async function renderAlerts(el) {
     const [alerts, sysStatus, spending, timeline, dailyTimeline] = await Promise.all([
         api('/alerts'),
         api('/system/status').catch(() => ({ status: 'unknown', gateway: false })),
-        api('/spending/current').catch(() => ({ today: 0, week: 0, month: 0, budget: { monthly: 100, weekly: 23.09, weekly_used: 0, weekly_pct: 0, monthly_used: 0, monthly_pct: 0 }, by_model: [], agents: [] })),
+        api('/spending/current').catch(() => ({ today: 0, month: 0, plan: 'Pro', window_hours: 5, usage: { all: { used: 0, limit: 44000, pct: 0 }, models: [] }, agents: [] })),
         api('/spending/timeline?range=week').catch(() => ({ labels: [], data: [] })),
         api('/spending/timeline?range=day').catch(() => ({ labels: [], data: [] })),
     ]);
 
     const statusIcon = sysStatus.gateway ? '🟢' : '🔴';
-    const ab = spending.budget || {};
-    const aWeeklyPct = Math.min(100, ab.weekly_pct || 0).toFixed(1);
+    const au = spending.usage || { all: { pct: 0 }, models: [] };
+    const aAllPct = Math.min(100, au.all.pct || 0).toFixed(1);
 
     el.innerHTML = `
         <div class="system-bar">
@@ -961,11 +968,11 @@ async function renderAlerts(el) {
             </div>
         </div>
         <div class="budget-bar">
-            <div class="budget-label">Weekly: $${(ab.weekly_used||0).toFixed(2)} / $${(ab.weekly||0).toFixed(2)} (${aWeeklyPct}%)</div>
-            <div class="progress-track"><div class="progress-fill ${aWeeklyPct > 90 ? 'progress-danger' : aWeeklyPct > 80 ? 'progress-warn' : ''}" style="width:${aWeeklyPct}%"></div></div>
+            <div class="budget-label">${spending.plan || 'Pro'}: All models ${aAllPct}% used</div>
+            <div class="progress-track"><div class="progress-fill ${aAllPct > 90 ? 'progress-danger' : aAllPct > 80 ? 'progress-warn' : ''}" style="width:${aAllPct}%"></div></div>
             <div class="budget-meta">
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
-                <span class="budget-tag">📆 Month: $${(ab.monthly_used||0).toFixed(2)} / $${(ab.monthly||0).toFixed(2)}</span>
+                <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>
             </div>
         </div>
         <div class="section-header">Today (hourly)</div>

@@ -1,4 +1,7 @@
-"""Spending data endpoints — reads from spending.db (read-only)."""
+"""Spending data endpoints — reads from spending.db (read-only).
+
+Uses 5-hour rolling window to match Anthropic's rate limit system.
+"""
 
 import os
 import sqlite3
@@ -9,23 +12,19 @@ from sqlalchemy.orm import Session as DBSession
 from backend.auth import get_current_user
 from backend.database import get_db
 from backend.models import Workspace
+from backend.plan_limits import get_plan_by_budget, get_model_limit, get_all_limit
 
 router = APIRouter(prefix="/api/spending", tags=["spending"])
 
 SPENDING_DB = os.path.expanduser("~/projects/spending-tracker/spending.db")
+
+ROLLING_WINDOW_HOURS = 5
 
 
 def _get_conn():
     if not os.path.exists(SPENDING_DB):
         return None
     return sqlite3.connect(SPENDING_DB)
-
-
-def _week_start() -> str:
-    """Monday 00:00 UTC of current week."""
-    now = datetime.now(timezone.utc)
-    monday = now - timedelta(days=now.weekday())
-    return monday.strftime("%Y-%m-%d")
 
 
 def _get_budget(user: dict, db: DBSession) -> float:
@@ -37,88 +36,118 @@ def _get_budget(user: dict, db: DBSession) -> float:
     return 100.0
 
 
-@router.get("/current")
-def spending_current(
-    user: dict = Depends(get_current_user),
-    db: DBSession = Depends(get_db),
-):
-    """Current spending with budget info and per-model breakdown."""
-    monthly_budget = _get_budget(user, db)
-    weekly_budget = round(monthly_budget / 4, 2)  # ~25% of monthly per week
-
-    conn = _get_conn()
-    if not conn:
-        return {
-            "today": 0, "week": 0, "month": 0,
-            "budget": {
-                "monthly": monthly_budget, "weekly": weekly_budget,
-                "weekly_used": 0, "weekly_pct": 0,
-                "monthly_used": 0, "monthly_pct": 0,
-            },
-            "by_model": [],
-            "agents": [],
-        }
-
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    week_start = _week_start()
-    month_start = datetime.now(timezone.utc).strftime("%Y-%m-01")
-
-    # Totals
-    today_total = conn.execute(
-        "SELECT COALESCE(SUM(total_cost), 0) FROM daily_summary WHERE date = ?", (today,)
-    ).fetchone()[0]
-
-    week_total = conn.execute(
-        "SELECT COALESCE(SUM(cost_total), 0) FROM usage_log WHERE date >= ?", (week_start,)
-    ).fetchone()[0]
-
-    month_total = conn.execute(
-        "SELECT COALESCE(SUM(total_cost), 0) FROM daily_summary WHERE date >= ?", (month_start,)
-    ).fetchone()[0]
-
-    # Infer model for NULL entries based on agent's most common model
-    agent_model_map = {}
-    agent_model_rows = conn.execute("""
+def _get_agent_model_map(conn) -> dict:
+    """Build agent -> most-used model map for inferring NULL models."""
+    rows = conn.execute("""
         SELECT agent, model, COUNT(*) as cnt
         FROM usage_log
         WHERE model IS NOT NULL AND model != ''
         GROUP BY agent, model
         ORDER BY agent, cnt DESC
     """).fetchall()
-    for agent, model, cnt in agent_model_rows:
-        if agent not in agent_model_map:
-            agent_model_map[agent] = model
+    result = {}
+    for agent, model, cnt in rows:
+        if agent not in result:
+            result[agent] = model
+    return result
 
-    # Per-model breakdown (current week)
-    model_rows = conn.execute("""
+
+@router.get("/current")
+def spending_current(
+    user: dict = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Current spending with 5hr rolling window usage like Anthropic."""
+    monthly_budget = _get_budget(user, db)
+    plan = get_plan_by_budget(monthly_budget)
+    all_limit = get_all_limit(plan)
+
+    conn = _get_conn()
+    if not conn:
+        return {
+            "today": 0, "week": 0, "month": 0,
+            "plan": plan["name"],
+            "window_hours": ROLLING_WINDOW_HOURS,
+            "usage": {"all": {"used": 0, "limit": all_limit, "pct": 0}, "models": []},
+            "by_model": [],
+            "agents": [],
+        }
+
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    month_start = now.strftime("%Y-%m-01")
+    window_start = (now - timedelta(hours=ROLLING_WINDOW_HOURS)).isoformat()
+
+    agent_model_map = _get_agent_model_map(conn)
+
+    # === Cost totals (for display) ===
+    today_total = conn.execute(
+        "SELECT COALESCE(SUM(total_cost), 0) FROM daily_summary WHERE date = ?", (today,)
+    ).fetchone()[0]
+
+    month_total = conn.execute(
+        "SELECT COALESCE(SUM(total_cost), 0) FROM daily_summary WHERE date >= ?", (month_start,)
+    ).fetchone()[0]
+
+    # === 5hr rolling window — output tokens per model ===
+    window_rows = conn.execute("""
         SELECT COALESCE(NULLIF(model, ''), '') as m,
                agent,
+               SUM(output_tokens) as out_tokens,
                SUM(cost_total) as cost,
                COUNT(*) as msgs
         FROM usage_log
-        WHERE date >= ?
+        WHERE timestamp >= ?
         GROUP BY m, agent
-        ORDER BY cost DESC
-    """, (week_start,)).fetchall()
+    """, (window_start,)).fetchall()
 
-    model_totals = {}
-    for m, agent, cost, msgs in model_rows:
+    # Aggregate by resolved model
+    model_usage = {}  # model -> {tokens, cost, msgs}
+    total_tokens = 0
+    total_cost_window = 0.0
+    for m, agent, tokens, cost, msgs in window_rows:
         resolved = m if m else agent_model_map.get(agent, 'unknown')
-        if resolved not in model_totals:
-            model_totals[resolved] = {"cost": 0.0, "messages": 0}
-        model_totals[resolved]["cost"] += float(cost)
-        model_totals[resolved]["messages"] += msgs
+        if resolved not in model_usage:
+            model_usage[resolved] = {"tokens": 0, "cost": 0.0, "msgs": 0}
+        model_usage[resolved]["tokens"] += (tokens or 0)
+        model_usage[resolved]["cost"] += float(cost or 0)
+        model_usage[resolved]["msgs"] += msgs
+        total_tokens += (tokens or 0)
+        total_cost_window += float(cost or 0)
 
-    by_model = []
-    total_week_cost = sum(v["cost"] for v in model_totals.values())
-    for m, v in sorted(model_totals.items(), key=lambda x: -x[1]["cost"]):
-        pct = round(v["cost"] / total_week_cost * 100, 1) if total_week_cost > 0 else 0
-        by_model.append({
-            "model": m,
-            "cost": round(v["cost"], 2),
-            "messages": v["messages"],
-            "pct": pct,
+    # Build per-model usage with limits
+    models_usage = []
+    for model_name, data in sorted(model_usage.items(), key=lambda x: -x[1]["tokens"]):
+        limit = get_model_limit(plan, model_name)
+        pct = round(data["tokens"] / limit * 100, 1) if limit > 0 else 0
+        models_usage.append({
+            "model": model_name,
+            "used": data["tokens"],
+            "limit": limit,
+            "pct": min(pct, 100.0),
+            "cost": round(data["cost"], 2),
+            "messages": data["msgs"],
         })
+
+    # All-models combined
+    all_pct = round(total_tokens / all_limit * 100, 1) if all_limit > 0 else 0
+
+    # Calculate window reset time
+    # Find oldest message in window to estimate when tokens start expiring
+    oldest_in_window = conn.execute(
+        "SELECT MIN(timestamp) FROM usage_log WHERE timestamp >= ?", (window_start,)
+    ).fetchone()[0]
+
+    resets_in_minutes = None
+    if oldest_in_window:
+        try:
+            oldest_dt = datetime.fromisoformat(oldest_in_window.replace('Z', '+00:00'))
+            reset_at = oldest_dt + timedelta(hours=ROLLING_WINDOW_HOURS)
+            diff = reset_at - now
+            if diff.total_seconds() > 0:
+                resets_in_minutes = int(diff.total_seconds() / 60)
+        except (ValueError, TypeError):
+            pass
 
     # Per-agent (today)
     agents = conn.execute(
@@ -128,22 +157,21 @@ def spending_current(
 
     conn.close()
 
-    week_used = round(float(week_total), 2)
-    month_used = round(float(month_total), 2)
-
     return {
         "today": round(float(today_total), 2),
-        "week": week_used,
-        "month": month_used,
-        "budget": {
-            "monthly": monthly_budget,
-            "weekly": weekly_budget,
-            "weekly_used": week_used,
-            "weekly_pct": round(min(week_used / weekly_budget * 100, 999.9), 1) if weekly_budget > 0 else 0,
-            "monthly_used": month_used,
-            "monthly_pct": round(min(month_used / monthly_budget * 100, 999.9), 1) if monthly_budget > 0 else 0,
+        "month": round(float(month_total), 2),
+        "plan": plan["name"],
+        "window_hours": ROLLING_WINDOW_HOURS,
+        "resets_in_minutes": resets_in_minutes,
+        "usage": {
+            "all": {
+                "used": total_tokens,
+                "limit": all_limit,
+                "pct": min(all_pct, 100.0),
+                "cost": round(total_cost_window, 2),
+            },
+            "models": models_usage,
         },
-        "by_model": by_model,
         "agents": [{"agent": r[0], "cost": round(float(r[1]), 2), "messages": r[2]} for r in agents],
     }
 
