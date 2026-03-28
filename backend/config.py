@@ -19,6 +19,11 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(exist_ok=True)
 DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'crm.db'}")
 
+# PostgreSQL (used by docker-compose, ignored in local SQLite mode)
+POSTGRES_USER: str = os.getenv("POSTGRES_USER", "agentcrm")
+POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "change-me")
+POSTGRES_DB: str = os.getenv("POSTGRES_DB", "agentcrm")
+
 # OpenClaw
 OPENCLAW_BIN: str = os.getenv("OPENCLAW_BIN", "/home/caramel/.npm-global/bin/openclaw")
 OPENCLAW_DIR: str = os.getenv("OPENCLAW_DIR", str(Path.home() / ".openclaw"))

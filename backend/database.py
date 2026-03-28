@@ -25,9 +25,10 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def create_tables():
-    """Create all tables and add missing columns."""
+    """Create all tables and add missing columns (SQLite only; PostgreSQL uses Alembic)."""
     Base.metadata.create_all(bind=engine)
-    _migrate_columns()
+    if _is_sqlite:
+        _migrate_columns()
 
 
 def _migrate_columns():
