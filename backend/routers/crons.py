@@ -67,7 +67,7 @@ def _parse_cron_item(item: dict) -> dict:
         "agent_id": item.get("agentId", ""),
         "enabled": item.get("enabled", True),
         "model": payload.get("model", ""),
-        "description": payload.get("message", "")[:200],
+        "description": payload.get("message", ""),
         "next_run": next_run,
         "delivery_channel": delivery.get("channel", ""),
     }
