@@ -117,18 +117,16 @@ def spending_current(
     plan = get_plan_by_budget(monthly_budget)
 
     session_hours = plan.get("session_hours", 5)
-    weekly_limits = plan.get("weekly_limits", {"_all": 1})
-    session_limits = plan.get("session_limits", {"_all": 1})
-    weekly_all_limit = weekly_limits.get("_all", 1)
-    session_all_limit = session_limits.get("_all", 1)
+    weekly_cost_limit = plan.get("weekly_cost_limit", 243)
+    session_cost_limit = plan.get("session_cost_limit", 177)
 
     conn = _get_conn()
     if not conn:
         empty = {"used": 0, "limit": 0, "pct": 0, "models": []}
         return {
             "today": 0, "month": 0, "plan": plan["name"],
-            "weekly": {**empty, "limit": weekly_all_limit, "resets_in_minutes": 0},
-            "session": {**empty, "limit": session_all_limit, "resets_in_minutes": 0},
+            "weekly": {**empty, "limit": weekly_cost_limit, "resets_in_minutes": 0},
+            "session": {**empty, "limit": session_cost_limit, "resets_in_minutes": 0},
             "agents": [],
         }
 
@@ -145,7 +143,7 @@ def spending_current(
         "SELECT COALESCE(SUM(total_cost), 0) FROM daily_summary WHERE date >= ?", (month_start,)
     ).fetchone()[0]
 
-    # === Weekly session ===
+    # === Weekly session (cost-based) ===
     weekly_start = _get_weekly_reset_start(plan)
     weekly_rows = conn.execute("""
         SELECT COALESCE(NULLIF(model, ''), '') as m, agent,
@@ -155,13 +153,23 @@ def spending_current(
     """, (weekly_start.isoformat(),)).fetchall()
 
     w_model_data, w_total_tokens, w_total_cost = _aggregate_by_model(weekly_rows, agent_model_map)
-    w_models = _build_model_usage(w_model_data, weekly_limits)
-    w_all_pct = round(w_total_tokens / weekly_all_limit * 100, 1) if weekly_all_limit > 0 else 0
+    w_all_pct = round(w_total_cost / weekly_cost_limit * 100, 1) if weekly_cost_limit > 0 else 0
+
+    # Per-model cost breakdown for weekly
+    w_models = []
+    for model_name, data in sorted(w_model_data.items(), key=lambda x: -x[1]["cost"]):
+        pct = round(data["cost"] / weekly_cost_limit * 100, 1) if weekly_cost_limit > 0 else 0
+        w_models.append({
+            "model": model_name,
+            "cost": round(data["cost"], 2),
+            "messages": data["msgs"],
+            "pct": min(pct, 999.9),
+        })
 
     next_weekly = _next_weekly_reset(plan)
     w_reset_min = max(0, int((next_weekly - now).total_seconds() / 60))
 
-    # === Current 5hr session ===
+    # === Current 5hr session (cost-based) ===
     session_start = (now - timedelta(hours=session_hours)).isoformat()
     session_rows = conn.execute("""
         SELECT COALESCE(NULLIF(model, ''), '') as m, agent,
@@ -171,26 +179,34 @@ def spending_current(
     """, (session_start,)).fetchall()
 
     s_model_data, s_total_tokens, s_total_cost = _aggregate_by_model(session_rows, agent_model_map)
-    s_models = _build_model_usage(s_model_data, session_limits)
-    s_all_pct = round(s_total_tokens / session_all_limit * 100, 1) if session_all_limit > 0 else 0
+    s_all_pct = round(s_total_cost / session_cost_limit * 100, 1) if session_cost_limit > 0 else 0
 
-    # Session reset: find when the bulk of tokens were consumed
-    # Use the timestamp where 50% of tokens were accumulated (median weighted by tokens)
-    # This gives a more meaningful "resets in" that matches Anthropic's display
+    # Per-model cost breakdown for session
+    s_models = []
+    for model_name, data in sorted(s_model_data.items(), key=lambda x: -x[1]["cost"]):
+        pct = round(data["cost"] / session_cost_limit * 100, 1) if session_cost_limit > 0 else 0
+        s_models.append({
+            "model": model_name,
+            "cost": round(data["cost"], 2),
+            "messages": data["msgs"],
+            "pct": min(pct, 999.9),
+        })
+
+    # Session reset: cost-weighted median timestamp
     session_msgs = conn.execute("""
-        SELECT timestamp, output_tokens FROM usage_log
+        SELECT timestamp, cost_total FROM usage_log
         WHERE timestamp >= ?
         ORDER BY timestamp ASC
     """, (session_start,)).fetchall()
 
     s_reset_min = None
-    if session_msgs and s_total_tokens > 0:
-        cumulative = 0
-        half_tokens = s_total_tokens * 0.5
+    if session_msgs and s_total_cost > 0:
+        cumulative = 0.0
+        half_cost = s_total_cost * 0.5
         median_ts = None
-        for ts, tokens in session_msgs:
-            cumulative += (tokens or 0)
-            if cumulative >= half_tokens:
+        for ts, cost in session_msgs:
+            cumulative += float(cost or 0)
+            if cumulative >= half_cost:
                 median_ts = ts
                 break
         if median_ts:
@@ -216,18 +232,16 @@ def spending_current(
         "month": round(float(month_total), 2),
         "plan": plan["name"],
         "weekly": {
-            "used": w_total_tokens,
-            "limit": weekly_all_limit,
+            "used": round(w_total_cost, 2),
+            "limit": weekly_cost_limit,
             "pct": min(w_all_pct, 100.0),
-            "cost": round(w_total_cost, 2),
             "resets_in_minutes": w_reset_min,
             "models": w_models,
         },
         "session": {
-            "used": s_total_tokens,
-            "limit": session_all_limit,
+            "used": round(s_total_cost, 2),
+            "limit": session_cost_limit,
             "pct": min(s_all_pct, 100.0),
-            "cost": round(s_total_cost, 2),
             "resets_in_minutes": s_reset_min,
             "models": s_models,
         },

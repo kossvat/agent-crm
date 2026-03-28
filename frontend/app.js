@@ -475,16 +475,14 @@ async function renderDashboard(el) {
         const color = autoColor(m.model, i);
         const barW = Math.min(100, m.pct || 0);
         const shortName = m.model.replace('claude-', '').replace('-20241022', '');
-        const tokensK = (m.used / 1000).toFixed(1);
-        const limitK = (m.limit / 1000).toFixed(0);
         return `<div class="model-row">
             <div class="model-info">
                 <span class="model-dot" style="background:${color}"></span>
                 <span class="model-name">${shortName}</span>
-                <span class="model-pct">${m.pct.toFixed(1)}% used</span>
+                <span class="model-pct">${m.pct.toFixed(1)}%</span>
             </div>
             <div class="progress-track model-track"><div class="progress-fill" style="width:${barW}%;background:${color}"></div></div>
-            <div class="model-meta">${tokensK}K / ${limitK}K tokens · $${m.cost.toFixed(2)} · ${m.messages} msgs</div>
+            <div class="model-meta">$${m.cost.toFixed(2)} · ${m.messages} msgs</div>
         </div>`;
     }).join('');
 
