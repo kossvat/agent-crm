@@ -52,24 +52,14 @@ def get_plan_by_budget(monthly_budget: float) -> dict:
     Known tiers: $20 (1x), $100 (5x), $200 (10x).
     Unknown amounts: interpolate multiplier linearly ($20=1x baseline).
     """
-    # Find matching tier or interpolate
+    # Match exact tier only — Anthropic has fixed plans, no interpolation
     tier = PLAN_TIERS[0]  # default Pro
     for t in PLAN_TIERS:
         if monthly_budget >= t["cost"]:
             tier = t
 
-    # For exact matches use tier multiplier, otherwise interpolate
-    if monthly_budget == tier["cost"]:
-        multiplier = tier["multiplier"]
-        name = tier["name"]
-    elif monthly_budget > tier["cost"]:
-        # Above highest tier — extrapolate
-        multiplier = tier["multiplier"] * (monthly_budget / tier["cost"])
-        name = f"Custom ${int(monthly_budget)}"
-    else:
-        # Below Pro — scale down proportionally
-        multiplier = max(0.1, monthly_budget / 20.0)
-        name = f"Custom ${int(monthly_budget)}"
+    multiplier = tier["multiplier"]
+    name = tier["name"]
 
     return {
         "name": name,
