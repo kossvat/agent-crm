@@ -694,7 +694,7 @@ async function renderKanban(el) {
             if (e.target.closest('.kanban-expand-btn')) {
                 card.classList.toggle('expanded');
                 const btn = card.querySelector('.kanban-expand-btn');
-                if (btn) btn.textContent = card.classList.contains('expanded') ? 'свернуть ↑' : 'ещё ↓';
+                if (btn) btn.textContent = card.classList.contains('expanded') ? 'less ↑' : 'more ↓';
                 if (tg) tg.HapticFeedback?.impactOccurred('light');
                 return;
             }
@@ -731,7 +731,7 @@ function kanbanCardHTML(t) {
     const catBadge = categoryBadgeHTML(t.category);
 
     const descPreview = t.description
-        ? `<div class="kanban-desc">${escapeHtml(t.description)}</div>${t.description.length > 60 ? '<div class="kanban-expand-btn">ещё ↓</div>' : ''}`
+        ? `<div class="kanban-desc">${escapeHtml(t.description)}</div>${t.description.length > 60 ? '<div class="kanban-expand-btn">more ↓</div>' : ''}`
         : '';
 
     return `
