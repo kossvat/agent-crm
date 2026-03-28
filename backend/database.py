@@ -1,4 +1,4 @@
-"""SQLAlchemy database setup — synchronous SQLite for MVP."""
+"""SQLAlchemy database setup — supports SQLite (dev) and PostgreSQL (prod)."""
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
@@ -6,8 +6,12 @@ from typing import Generator
 
 from backend.config import DATABASE_URL
 
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+_engine_kwargs: dict = {"echo": False}
+if _is_sqlite:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
 
-engine = create_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 

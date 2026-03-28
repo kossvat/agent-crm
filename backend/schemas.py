@@ -37,15 +37,15 @@ class AgentResponse(BaseModel):
 
     id: int
     name: str
-    emoji: str
-    model: str
-    role: str
-    bio: str
-    status: str
-    session_key: str
-    last_active: Optional[datetime]
-    daily_cost: float
-    created: datetime
+    emoji: str = "🤖"
+    model: str = ""
+    role: str = ""
+    bio: str = ""
+    status: str = "idle"
+    session_key: str = ""
+    last_active: Optional[datetime] = None
+    daily_cost: float = 0.0
+    created: Optional[datetime] = None
 
 
 class AgentCreate(BaseModel):
