@@ -84,6 +84,7 @@ class Workspace(Base):
     api_key = Column(String(500), nullable=True)
     tier = Column(SAEnum(TierType), default=TierType.hobby)
     agent_limit = Column(Integer, default=3)
+    monthly_budget = Column(Float, default=100.0)
     created = Column(DateTime(timezone=True), default=utcnow)
 
     owner = relationship("User", back_populates="workspaces")

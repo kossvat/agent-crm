@@ -445,7 +445,7 @@ async function renderDashboard(el) {
     const [data, sysStatus, spending, dailyTimeline, weeklyTimeline, sessions] = await Promise.all([
         api(`/dashboard${params}`),
         api('/system/status').catch(() => ({ status: 'unknown', gateway: false })),
-        api('/spending/current').catch(() => ({ today: 0, week: 0, month: 0, budget: 200, agents: [] })),
+        api('/spending/current').catch(() => ({ today: 0, week: 0, month: 0, budget: { monthly: 100, weekly: 23.09, weekly_used: 0, weekly_pct: 0, monthly_used: 0, monthly_pct: 0 }, by_model: [], agents: [] })),
         api('/spending/timeline?range=day').catch(() => ({ labels: [], data: [] })),
         api('/spending/timeline?range=week').catch(() => ({ labels: [], data: [] })),
         api('/spending/sessions').catch(() => []),
@@ -456,7 +456,27 @@ async function renderDashboard(el) {
     const taskLabel = periodFilter === 'all' ? 'Active Tasks' : `Tasks (${periodFilter})`;
     const statusIcon = sysStatus.gateway ? '🟢' : '🔴';
     const statusText = sysStatus.gateway ? 'Running' : 'Stopped';
-    const budgetPct = Math.min(100, (spending.month / spending.budget * 100)).toFixed(0);
+    const b = spending.budget || {};
+    const weeklyPct = Math.min(100, b.weekly_pct || 0).toFixed(1);
+    const monthlyPct = Math.min(100, b.monthly_pct || 0).toFixed(1);
+    const modelColors = {'claude-opus-4-6':'#8B5CF6','claude-sonnet-4-6':'#3B82F6','claude-haiku-35-20241022':'#10B981','unknown':'#6B7280'};
+    const autoColor = (m, i) => modelColors[m] || ['#F59E0B','#EF4444','#EC4899','#14B8A6'][i % 4];
+
+    const modelBarsHTML = (spending.by_model || []).map((m, i) => {
+        const color = autoColor(m.model, i);
+        const barW = Math.min(100, m.pct || 0);
+        const shortName = m.model.replace('claude-', '').replace('-20241022', '');
+        return `<div class="model-row">
+            <div class="model-info">
+                <span class="model-dot" style="background:${color}"></span>
+                <span class="model-name">${shortName}</span>
+                <span class="model-cost">$${m.cost.toFixed(2)}</span>
+                <span class="model-msgs">${m.messages} msgs</span>
+                <span class="model-pct">${m.pct.toFixed(1)}%</span>
+            </div>
+            <div class="progress-track model-track"><div class="progress-fill" style="width:${barW}%;background:${color}"></div></div>
+        </div>`;
+    }).join('');
 
     el.innerHTML = `
         <div class="system-bar">
@@ -467,12 +487,13 @@ async function renderDashboard(el) {
             </div>
         </div>
         <div class="budget-bar">
-            <div class="budget-label">Monthly Budget: $${spending.month.toFixed(2)} / $${spending.budget}</div>
-            <div class="progress-track"><div class="progress-fill ${budgetPct > 90 ? 'progress-danger' : budgetPct > 80 ? 'progress-warn' : ''}" style="width:${budgetPct}%"></div></div>
+            <div class="budget-label">Weekly Usage: $${(b.weekly_used||0).toFixed(2)} / $${(b.weekly||0).toFixed(2)} (${weeklyPct}%)</div>
+            <div class="progress-track"><div class="progress-fill ${weeklyPct > 90 ? 'progress-danger' : weeklyPct > 80 ? 'progress-warn' : ''}" style="width:${weeklyPct}%"></div></div>
             <div class="budget-meta">
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
-                <span class="budget-tag">📆 Week: $${spending.week.toFixed(2)}</span>
+                <span class="budget-tag">📆 Month: $${(b.monthly_used||0).toFixed(2)} / $${(b.monthly||0).toFixed(2)} (${monthlyPct}%)</span>
             </div>
+            ${modelBarsHTML ? `<div class="model-breakdown">${modelBarsHTML}</div>` : ''}
         </div>
         ${periodFilterHTML()}
         <div class="summary-grid">
@@ -920,13 +941,14 @@ async function renderAlerts(el) {
     const [alerts, sysStatus, spending, timeline, dailyTimeline] = await Promise.all([
         api('/alerts'),
         api('/system/status').catch(() => ({ status: 'unknown', gateway: false })),
-        api('/spending/current').catch(() => ({ today: 0, week: 0, month: 0, budget: 200 })),
+        api('/spending/current').catch(() => ({ today: 0, week: 0, month: 0, budget: { monthly: 100, weekly: 23.09, weekly_used: 0, weekly_pct: 0, monthly_used: 0, monthly_pct: 0 }, by_model: [], agents: [] })),
         api('/spending/timeline?range=week').catch(() => ({ labels: [], data: [] })),
         api('/spending/timeline?range=day').catch(() => ({ labels: [], data: [] })),
     ]);
 
     const statusIcon = sysStatus.gateway ? '🟢' : '🔴';
-    const budgetPct = Math.min(100, (spending.month / spending.budget * 100)).toFixed(0);
+    const ab = spending.budget || {};
+    const aWeeklyPct = Math.min(100, ab.weekly_pct || 0).toFixed(1);
 
     el.innerHTML = `
         <div class="system-bar">
@@ -938,11 +960,11 @@ async function renderAlerts(el) {
             </div>
         </div>
         <div class="budget-bar">
-            <div class="budget-label">Budget: $${spending.month.toFixed(2)} / $${spending.budget} (${budgetPct}%)</div>
-            <div class="progress-track"><div class="progress-fill ${budgetPct > 90 ? 'progress-danger' : budgetPct > 80 ? 'progress-warn' : ''}" style="width:${budgetPct}%"></div></div>
+            <div class="budget-label">Weekly: $${(ab.weekly_used||0).toFixed(2)} / $${(ab.weekly||0).toFixed(2)} (${aWeeklyPct}%)</div>
+            <div class="progress-track"><div class="progress-fill ${aWeeklyPct > 90 ? 'progress-danger' : aWeeklyPct > 80 ? 'progress-warn' : ''}" style="width:${aWeeklyPct}%"></div></div>
             <div class="budget-meta">
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
-                <span class="budget-tag">📆 Week: $${spending.week.toFixed(2)}</span>
+                <span class="budget-tag">📆 Month: $${(ab.monthly_used||0).toFixed(2)} / $${(ab.monthly||0).toFixed(2)}</span>
             </div>
         </div>
         <div class="section-header">Today (hourly)</div>

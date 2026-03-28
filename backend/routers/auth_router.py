@@ -104,6 +104,30 @@ def complete_onboarding(
     return {"ok": True}
 
 
+class BudgetUpdateRequest(BaseModel):
+    monthly_budget: float
+
+
+@router.patch("/workspace/budget")
+def update_budget(
+    data: BudgetUpdateRequest,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update workspace monthly budget. Owner only."""
+    if not user.get("is_owner"):
+        raise HTTPException(status_code=403, detail="Owner only")
+    ws_id = user.get("workspace_id", 1)
+    workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if data.monthly_budget < 0 or data.monthly_budget > 10000:
+        raise HTTPException(status_code=400, detail="Budget must be 0-10000")
+    workspace.monthly_budget = data.monthly_budget
+    db.commit()
+    return {"ok": True, "monthly_budget": workspace.monthly_budget}
+
+
 @router.get("/me")
 def get_me(
     user: dict = Depends(get_current_user),

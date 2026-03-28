@@ -994,3 +994,25 @@ main { flex: 1; padding: 8px 12px 16px; }
     0%, 100% { opacity: 1; }
     50% { opacity: 0.85; }
 }
+
+/* Model breakdown */
+.model-breakdown { margin-top: 10px; }
+.model-row { margin-bottom: 8px; }
+.model-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    margin-bottom: 3px;
+    color: var(--tg-theme-text-color, #fff);
+}
+.model-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.model-name { font-weight: 600; flex: 1; }
+.model-cost { font-weight: 600; }
+.model-msgs { color: var(--tg-theme-hint-color, #888); font-size: 11px; }
+.model-pct { color: var(--tg-theme-hint-color, #888); font-size: 11px; min-width: 42px; text-align: right; }
+.model-track { height: 6px !important; border-radius: 3px; }
