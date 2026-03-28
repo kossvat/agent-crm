@@ -690,14 +690,15 @@ async function renderKanban(el) {
     el.querySelectorAll('.kanban-card').forEach(card => {
         card.addEventListener('click', (e) => {
             if (card.classList.contains('sortable-chosen')) return;
-            // Edit button opens modal
-            if (e.target.closest('.kanban-edit-btn')) {
-                openTaskModal(parseInt(card.dataset.id));
+            // Expand toggle button — don't open modal
+            if (e.target.closest('.kanban-expand-btn')) {
+                card.classList.toggle('expanded');
+                const btn = card.querySelector('.kanban-expand-btn');
+                if (btn) btn.textContent = card.classList.contains('expanded') ? 'свернуть ↑' : 'ещё ↓';
+                if (tg) tg.HapticFeedback?.impactOccurred('light');
                 return;
             }
-            // Everything else toggles expand
-            card.classList.toggle('expanded');
-            if (tg) tg.HapticFeedback?.impactOccurred('light');
+            openTaskModal(parseInt(card.dataset.id));
         });
     });
 
@@ -729,7 +730,9 @@ function kanbanCardHTML(t) {
     const dlBadge = t.deadline ? deadlineBadgeHTML(t) : '';
     const catBadge = categoryBadgeHTML(t.category);
 
-    const descPreview = t.description ? `<div class="kanban-desc">${escapeHtml(t.description)}</div>` : '';
+    const descPreview = t.description
+        ? `<div class="kanban-desc">${escapeHtml(t.description)}</div>${t.description.length > 60 ? '<div class="kanban-expand-btn">ещё ↓</div>' : ''}`
+        : '';
 
     return `
         <div class="kanban-card priority-${t.priority} ${dlClass}" data-id="${t.id}">
@@ -742,7 +745,6 @@ function kanbanCardHTML(t) {
                 ${dlBadge}
                 <span>${timeAgo(t.created)}</span>
             </div>
-            <button class="kanban-edit-btn">✏️ Edit</button>
         </div>
     `;
 }
