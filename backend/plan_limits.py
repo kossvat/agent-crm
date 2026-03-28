@@ -19,10 +19,10 @@ PLANS = {
         "monthly_cost": 20,
         "window_hours": 5,
         "limits": {
-            "_all": 44_000,             # ~44K output tokens combined
-            "claude-sonnet-4-6": 40_000,
-            "claude-opus-4-6": 12_000,
-            "claude-haiku-35-20241022": 80_000,
+            "_all": 200_000,
+            "claude-sonnet-4-6": 180_000,
+            "claude-opus-4-6": 50_000,
+            "claude-haiku-35-20241022": 400_000,
         },
     },
     "max_100": {
@@ -30,10 +30,10 @@ PLANS = {
         "monthly_cost": 100,
         "window_hours": 5,
         "limits": {
-            "_all": 88_000,              # ~88K output tokens combined
-            "claude-sonnet-4-6": 80_000,
-            "claude-opus-4-6": 25_000,
-            "claude-haiku-35-20241022": 160_000,
+            "_all": 500_000,
+            "claude-sonnet-4-6": 450_000,
+            "claude-opus-4-6": 150_000,
+            "claude-haiku-35-20241022": 1_000_000,
         },
     },
     "max_200": {
@@ -41,10 +41,10 @@ PLANS = {
         "monthly_cost": 200,
         "window_hours": 5,
         "limits": {
-            "_all": 220_000,             # ~220K output tokens combined
-            "claude-sonnet-4-6": 200_000,
-            "claude-opus-4-6": 60_000,
-            "claude-haiku-35-20241022": 400_000,
+            "_all": 1_000_000,
+            "claude-sonnet-4-6": 900_000,
+            "claude-opus-4-6": 300_000,
+            "claude-haiku-35-20241022": 2_000_000,
         },
     },
 }
