@@ -1282,45 +1282,15 @@ async function renderCrons(el) {
         }).join('')
         : '<div class="empty-state"><div class="empty-icon">⏰</div><p>No cron jobs</p></div>';
 
-    // Attach click handlers for expand
+    // Inline expand on click
     el.querySelectorAll('.cron-card').forEach(card => {
         card.addEventListener('click', (e) => {
-            if (e.target.closest('.toggle')) return; // don't trigger on toggle switch
-            expandCronCard(card);
+            if (e.target.closest('.toggle')) return;
+            const desc = card.querySelector('.cron-desc');
+            if (!desc) return;
+            card.classList.toggle('expanded');
+            if (tg) tg.HapticFeedback?.impactOccurred('light');
         });
-    });
-}
-
-function expandCronCard(card) {
-    if (tg) tg.HapticFeedback?.impactOccurred('medium');
-
-    const rect = card.getBoundingClientRect();
-    const overlay = document.createElement('div');
-    overlay.className = 'cron-overlay';
-
-    const clone = card.cloneNode(true);
-    clone.className = 'cron-card-expanded';
-    clone.style.cssText = `top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px;`;
-
-    // Remove line clamp on description in expanded clone
-    const desc = clone.querySelector('.cron-desc');
-    if (desc) desc.classList.add('cron-desc-full');
-
-    overlay.appendChild(clone);
-    document.body.appendChild(overlay);
-
-    // Force reflow then animate
-    requestAnimationFrame(() => {
-        overlay.classList.add('active');
-        clone.style.cssText = `top:0;left:0;width:100%;height:auto;min-height:100vh;`;
-    });
-
-    overlay.addEventListener('click', (e) => {
-        if (e.target.closest('.toggle')) return;
-        overlay.classList.remove('active');
-        clone.style.cssText = `top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px;`;
-        setTimeout(() => overlay.remove(), 350);
-        if (tg) tg.HapticFeedback?.impactOccurred('light');
     });
 }
 
