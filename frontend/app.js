@@ -691,6 +691,13 @@ async function renderKanban(el) {
         card.addEventListener('click', (e) => {
             // Don't trigger on drag
             if (card.classList.contains('sortable-chosen')) return;
+            // Inline expand description on desc click
+            const desc = card.querySelector('.kanban-desc');
+            if (desc && desc.contains(e.target)) {
+                card.classList.toggle('expanded');
+                if (tg) tg.HapticFeedback?.impactOccurred('light');
+                return;
+            }
             openTaskModal(parseInt(card.dataset.id));
         });
     });
@@ -723,7 +730,7 @@ function kanbanCardHTML(t) {
     const dlBadge = t.deadline ? deadlineBadgeHTML(t) : '';
     const catBadge = categoryBadgeHTML(t.category);
 
-    const descPreview = t.description ? `<div class="kanban-desc">${escapeHtml(t.description.slice(0, 80))}${t.description.length > 80 ? '…' : ''}</div>` : '';
+    const descPreview = t.description ? `<div class="kanban-desc">${escapeHtml(t.description)}</div>` : '';
 
     return `
         <div class="kanban-card priority-${t.priority} ${dlClass}" data-id="${t.id}">
