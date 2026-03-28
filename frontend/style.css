@@ -1000,17 +1000,32 @@ main { flex: 1; padding: 8px 12px 16px; }
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 .budget-plan {
     font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--tg-theme-text-color, #fff);
 }
-.budget-reset {
+
+/* Limit sections (weekly + session) */
+.limit-section { margin-bottom: 8px; }
+.limit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.limit-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tg-theme-text-color, #fff);
+}
+.limit-reset {
     font-size: 11px;
     color: var(--tg-theme-hint-color, #888);
 }
+.progress-session { background: #3B82F6 !important; }
 
 /* Model breakdown */
 .model-breakdown { margin-top: 12px; }

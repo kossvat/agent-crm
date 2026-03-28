@@ -457,15 +457,20 @@ async function renderDashboard(el) {
     const statusIcon = sysStatus.gateway ? '🟢' : '🔴';
     const statusText = sysStatus.gateway ? 'Running' : 'Stopped';
 
-    // Usage data (5hr rolling window like Anthropic)
-    const u = spending.usage || { all: { used: 0, limit: 1, pct: 0 }, models: [] };
-    const allPct = Math.min(100, u.all.pct || 0).toFixed(1);
-    const resetMin = spending.resets_in_minutes;
-    const resetText = resetMin ? `Resets in ${Math.floor(resetMin/60)}hr ${resetMin%60}min` : '';
+    // Dual rate limits like Anthropic
+    const w = spending.weekly || { pct: 0, resets_in_minutes: 0, models: [] };
+    const s = spending.session || { pct: 0, resets_in_minutes: 0, models: [] };
+    const wPct = Math.min(100, w.pct || 0).toFixed(1);
+    const sPct = Math.min(100, s.pct || 0).toFixed(1);
+    const fmtReset = (min) => {
+        if (!min && min !== 0) return '';
+        const h = Math.floor(min / 60), m = min % 60;
+        return h > 0 ? `Resets in ${h}hr ${m}min` : `Resets in ${m}min`;
+    };
     const modelColors = {'claude-opus-4-6':'#8B5CF6','claude-sonnet-4-6':'#3B82F6','claude-haiku-35-20241022':'#10B981','unknown':'#6B7280'};
     const autoColor = (m, i) => modelColors[m] || ['#F59E0B','#EF4444','#EC4899','#14B8A6'][i % 4];
 
-    const modelBarsHTML = (u.models || []).map((m, i) => {
+    const renderModels = (models) => (models || []).map((m, i) => {
         const color = autoColor(m.model, i);
         const barW = Math.min(100, m.pct || 0);
         const shortName = m.model.replace('claude-', '').replace('-20241022', '');
@@ -493,15 +498,26 @@ async function renderDashboard(el) {
         <div class="budget-bar">
             <div class="budget-header">
                 <span class="budget-plan">${spending.plan || 'Pro'} Plan</span>
-                <span class="budget-reset">${resetText}</span>
             </div>
-            <div class="budget-label">All models: ${allPct}% used</div>
-            <div class="progress-track"><div class="progress-fill ${allPct > 90 ? 'progress-danger' : allPct > 80 ? 'progress-warn' : ''}" style="width:${allPct}%"></div></div>
+            <div class="limit-section">
+                <div class="limit-header">
+                    <span class="limit-label">Weekly session: ${wPct}%</span>
+                    <span class="limit-reset">${fmtReset(w.resets_in_minutes)}</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill ${wPct > 90 ? 'progress-danger' : wPct > 80 ? 'progress-warn' : ''}" style="width:${wPct}%"></div></div>
+            </div>
+            <div class="limit-section">
+                <div class="limit-header">
+                    <span class="limit-label">Current session: ${sPct}%</span>
+                    <span class="limit-reset">${fmtReset(s.resets_in_minutes)}</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill progress-session ${sPct > 90 ? 'progress-danger' : sPct > 80 ? 'progress-warn' : ''}" style="width:${sPct}%"></div></div>
+            </div>
             <div class="budget-meta">
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
                 <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>
             </div>
-            ${modelBarsHTML ? `<div class="model-breakdown">${modelBarsHTML}</div>` : ''}
+            ${s.models?.length ? `<div class="model-breakdown">${renderModels(s.models)}</div>` : ''}
         </div>
         ${periodFilterHTML()}
         <div class="summary-grid">
@@ -955,8 +971,10 @@ async function renderAlerts(el) {
     ]);
 
     const statusIcon = sysStatus.gateway ? '🟢' : '🔴';
-    const au = spending.usage || { all: { pct: 0 }, models: [] };
-    const aAllPct = Math.min(100, au.all.pct || 0).toFixed(1);
+    const aw = spending.weekly || { pct: 0 };
+    const as2 = spending.session || { pct: 0 };
+    const awPct = Math.min(100, aw.pct || 0).toFixed(1);
+    const asPct = Math.min(100, as2.pct || 0).toFixed(1);
 
     el.innerHTML = `
         <div class="system-bar">
@@ -968,8 +986,14 @@ async function renderAlerts(el) {
             </div>
         </div>
         <div class="budget-bar">
-            <div class="budget-label">${spending.plan || 'Pro'}: All models ${aAllPct}% used</div>
-            <div class="progress-track"><div class="progress-fill ${aAllPct > 90 ? 'progress-danger' : aAllPct > 80 ? 'progress-warn' : ''}" style="width:${aAllPct}%"></div></div>
+            <div class="limit-section">
+                <div class="limit-header"><span class="limit-label">Weekly: ${awPct}%</span></div>
+                <div class="progress-track"><div class="progress-fill ${awPct > 90 ? 'progress-danger' : awPct > 80 ? 'progress-warn' : ''}" style="width:${awPct}%"></div></div>
+            </div>
+            <div class="limit-section">
+                <div class="limit-header"><span class="limit-label">Session: ${asPct}%</span></div>
+                <div class="progress-track"><div class="progress-fill progress-session ${asPct > 90 ? 'progress-danger' : asPct > 80 ? 'progress-warn' : ''}" style="width:${asPct}%"></div></div>
+            </div>
             <div class="budget-meta">
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
                 <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>

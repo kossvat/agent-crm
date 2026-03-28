@@ -1,50 +1,63 @@
 """
-Anthropic plan limits — 5-hour rolling window token budgets.
+Anthropic plan limits — dual rate limit system.
 
-Based on public data (March 2026):
-- Rate limits use 5-hour rolling windows
-- Limits are in OUTPUT tokens (primary cost driver)
-- Each model has its own limit + combined "all models" limit
-- Plans: Pro ($20), Max 5x ($100), Max 20x ($200)
+Two separate limits:
+1. Weekly session: resets every Saturday ~8pm EST (Sunday 01:00 UTC)
+2. Current session: 5-hour rolling window
 
-Token allocations are approximate — Anthropic doesn't publish exact numbers.
-These are calibrated from community data and official hints.
+Limits are in OUTPUT tokens. Calibrated from real usage data (March 2026).
 """
 
-# Plan definitions: plan_id -> {name, monthly_cost, window_hours, limits}
-# Limits are OUTPUT tokens per 5-hour rolling window
 PLANS = {
     "pro_20": {
         "name": "Pro",
         "monthly_cost": 20,
-        "window_hours": 5,
-        "limits": {
-            "_all": 55_000,
-            "claude-sonnet-4-6": 50_000,
-            "claude-opus-4-6": 20_000,
-            "claude-haiku-35-20241022": 100_000,
+        "weekly_reset_utc_hour": 1,  # Sunday 01:00 UTC = Saturday 8pm EST
+        "weekly_reset_day": 6,       # 6 = Sunday
+        "session_hours": 5,
+        "weekly_limits": {
+            "_all": 230_000,
+            "claude-sonnet-4-6": 200_000,
+            "claude-opus-4-6": 60_000,
+        },
+        "session_limits": {
+            "_all": 160_000,
+            "claude-sonnet-4-6": 140_000,
+            "claude-opus-4-6": 45_000,
         },
     },
     "max_100": {
         "name": "Max 5x",
         "monthly_cost": 100,
-        "window_hours": 5,
-        "limits": {
-            "_all": 277_000,
-            "claude-sonnet-4-6": 250_000,
-            "claude-opus-4-6": 100_000,
-            "claude-haiku-35-20241022": 500_000,
+        "weekly_reset_utc_hour": 1,
+        "weekly_reset_day": 6,
+        "session_hours": 5,
+        "weekly_limits": {
+            "_all": 1_150_000,
+            "claude-sonnet-4-6": 1_000_000,
+            "claude-opus-4-6": 300_000,
+        },
+        "session_limits": {
+            "_all": 806_000,
+            "claude-sonnet-4-6": 700_000,
+            "claude-opus-4-6": 200_000,
         },
     },
     "max_200": {
         "name": "Max 20x",
         "monthly_cost": 200,
-        "window_hours": 5,
-        "limits": {
-            "_all": 1_100_000,
-            "claude-sonnet-4-6": 1_000_000,
-            "claude-opus-4-6": 400_000,
-            "claude-haiku-35-20241022": 2_000_000,
+        "weekly_reset_utc_hour": 1,
+        "weekly_reset_day": 6,
+        "session_hours": 5,
+        "weekly_limits": {
+            "_all": 4_600_000,
+            "claude-sonnet-4-6": 4_000_000,
+            "claude-opus-4-6": 1_200_000,
+        },
+        "session_limits": {
+            "_all": 3_200_000,
+            "claude-sonnet-4-6": 2_800_000,
+            "claude-opus-4-6": 800_000,
         },
     },
 }
@@ -58,13 +71,3 @@ def get_plan_by_budget(monthly_budget: float) -> dict:
         return PLANS["max_100"]
     else:
         return PLANS["pro_20"]
-
-
-def get_model_limit(plan: dict, model: str) -> int:
-    """Get output token limit for a specific model in a plan."""
-    return plan["limits"].get(model, plan["limits"]["_all"])
-
-
-def get_all_limit(plan: dict) -> int:
-    """Get combined all-models output token limit."""
-    return plan["limits"]["_all"]
