@@ -144,13 +144,16 @@ def spending_current(
     ).fetchone()[0]
 
     # === Weekly session (cost-based) ===
+    # Note: timestamps in spending.db use ISO format with 'T' separator (2026-03-28T15:30:00Z)
+    # SQLite string comparison requires matching format — use REPLACE to normalize
     weekly_start = _get_weekly_reset_start(plan)
+    weekly_start_str = weekly_start.strftime("%Y-%m-%d %H:%M:%S")
     weekly_rows = conn.execute("""
         SELECT COALESCE(NULLIF(model, ''), '') as m, agent,
                SUM(output_tokens) as out_t, SUM(cost_total) as cost, COUNT(*) as msgs
-        FROM usage_log WHERE timestamp >= ?
+        FROM usage_log WHERE REPLACE(REPLACE(timestamp, 'T', ' '), 'Z', '') >= ?
         GROUP BY m, agent
-    """, (weekly_start.isoformat(),)).fetchall()
+    """, (weekly_start_str,)).fetchall()
 
     w_model_data, w_total_tokens, w_total_cost = _aggregate_by_model(weekly_rows, agent_model_map)
     w_all_pct = round(w_total_cost / weekly_cost_limit * 100, 1) if weekly_cost_limit > 0 else 0
@@ -170,13 +173,13 @@ def spending_current(
     w_reset_min = max(0, int((next_weekly - now).total_seconds() / 60))
 
     # === Current 5hr session (cost-based) ===
-    session_start = (now - timedelta(hours=session_hours)).isoformat()
+    session_start_str = (now - timedelta(hours=session_hours)).strftime("%Y-%m-%d %H:%M:%S")
     session_rows = conn.execute("""
         SELECT COALESCE(NULLIF(model, ''), '') as m, agent,
                SUM(output_tokens) as out_t, SUM(cost_total) as cost, COUNT(*) as msgs
-        FROM usage_log WHERE timestamp >= ?
+        FROM usage_log WHERE REPLACE(REPLACE(timestamp, 'T', ' '), 'Z', '') >= ?
         GROUP BY m, agent
-    """, (session_start,)).fetchall()
+    """, (session_start_str,)).fetchall()
 
     s_model_data, s_total_tokens, s_total_cost = _aggregate_by_model(session_rows, agent_model_map)
     s_all_pct = round(s_total_cost / session_cost_limit * 100, 1) if session_cost_limit > 0 else 0
@@ -196,7 +199,8 @@ def spending_current(
     # "Resets in X min" = when the oldest significant chunk expires from the 5hr window
     # Use the first message in the window — that's when the window started filling
     oldest_ts = conn.execute(
-        "SELECT MIN(timestamp) FROM usage_log WHERE timestamp >= ?", (session_start,)
+        "SELECT MIN(timestamp) FROM usage_log WHERE REPLACE(REPLACE(timestamp, 'T', ' '), 'Z', '') >= ?",
+        (session_start_str,)
     ).fetchone()[0]
 
     s_reset_min = None

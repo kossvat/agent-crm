@@ -462,10 +462,19 @@ async function renderDashboard(el) {
     const s = spending.session || { pct: 0, resets_in_minutes: 0, models: [] };
     const wPct = Math.min(100, w.pct || 0).toFixed(1);
     const sPct = Math.min(100, s.pct || 0).toFixed(1);
-    const fmtReset = (min) => {
+    const fmtReset = (min, isWeekly) => {
         if (min === null || min === undefined) return '';
         if (min <= 0) return 'Resetting soon';
         const h = Math.floor(min / 60), m = min % 60;
+        if (isWeekly && h > 24) {
+            // Show as day + time for weekly (e.g. "Resets Sat 7:59 PM")
+            const resetDate = new Date(Date.now() + min * 60000);
+            const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let hrs = resetDate.getHours(), ampm = hrs >= 12 ? 'PM' : 'AM';
+            hrs = hrs % 12 || 12;
+            const mins = String(resetDate.getMinutes()).padStart(2, '0');
+            return `Resets ${days[resetDate.getDay()]} ${hrs}:${mins} ${ampm}`;
+        }
         return h > 0 ? `Resets in ${h}hr ${m}min` : `Resets in ${m}min`;
     };
     const modelColors = {'claude-opus-4-6':'#8B5CF6','claude-sonnet-4-6':'#3B82F6','claude-haiku-35-20241022':'#10B981','unknown':'#6B7280'};
@@ -501,7 +510,7 @@ async function renderDashboard(el) {
             <div class="limit-section">
                 <div class="limit-header">
                     <span class="limit-label">Weekly session: ${wPct}%</span>
-                    <span class="limit-reset">${fmtReset(w.resets_in_minutes)}</span>
+                    <span class="limit-reset">${fmtReset(w.resets_in_minutes, true)}</span>
                 </div>
                 <div class="progress-track"><div class="progress-fill ${wPct > 90 ? 'progress-danger' : wPct > 80 ? 'progress-warn' : ''}" style="width:${wPct}%"></div></div>
             </div>
