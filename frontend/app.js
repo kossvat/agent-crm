@@ -914,7 +914,40 @@ async function renderAgents(el) {
     const agentLimit = currentWorkspace?.agent_limit || 3;
     const limitInfo = `<div class="agent-limit-info">🤖 ${agents.length}/${agentLimit} agents (${tier.charAt(0).toUpperCase() + tier.slice(1)})</div>`;
 
-    el.innerHTML = restartBanner + limitInfo + (agents.length
+    // Connect Remote Agent section (owner only)
+    let connectSection = '';
+    if (currentUser?.is_owner) {
+        const pendingTokens = await api('/connect/status').catch(() => []);
+        const pendingHtml = pendingTokens.length
+            ? pendingTokens.map(t => {
+                const exp = new Date(t.expires);
+                const remaining = Math.max(0, Math.round((exp - Date.now()) / 60000));
+                const hrs = Math.floor(remaining / 60);
+                const mins = remaining % 60;
+                return `<div class="connect-token-item">
+                    <div class="connect-token-info">
+                        <code class="connect-token-preview">${t.token.slice(0, 12)}…</code>
+                        <span class="connect-token-expiry">⏳ ${hrs}h ${mins}m left</span>
+                    </div>
+                    <div class="connect-token-actions">
+                        <button class="btn-sm btn-copy" onclick="copyConnectUrl('${t.connect_url}', this)">📋 Copy</button>
+                    </div>
+                </div>`;
+            }).join('')
+            : '<div class="connect-empty">No pending connections</div>';
+
+        connectSection = `
+            <div class="card connect-section">
+                <div class="connect-header">
+                    <span class="connect-title">🔗 Remote Agents</span>
+                    <button class="btn-sm btn-accent" onclick="generateConnectLink()">+ New Link</button>
+                </div>
+                <div id="connect-result" class="connect-result hidden"></div>
+                <div class="connect-pending">${pendingHtml}</div>
+            </div>`;
+    }
+
+    el.innerHTML = restartBanner + limitInfo + connectSection + (agents.length
         ? agents.map(a => `<div class="card agent-card-full">
             <div class="agent-header">
                 <div class="agent-emoji">${a.emoji}</div>
@@ -955,6 +988,50 @@ window.changeAgentModel = async function(agentId, model) {
     } catch (err) {
         alert(err.message);
         render();
+    }
+};
+
+window.generateConnectLink = async function() {
+    const resultEl = document.getElementById('connect-result');
+    if (!resultEl) return;
+    resultEl.classList.remove('hidden');
+    resultEl.innerHTML = '<span class="connect-loading">Generating…</span>';
+    try {
+        const data = await api('/connect/generate', { method: 'POST' });
+        const exp = new Date(data.expires);
+        resultEl.innerHTML = `
+            <div class="connect-new-link">
+                <div class="connect-label">Send this link to your agent:</div>
+                <div class="connect-url-row">
+                    <input type="text" class="connect-url-input" value="${data.connect_url}" readonly onclick="this.select()">
+                    <button class="btn-sm btn-copy" onclick="copyConnectUrl('${data.connect_url}', this)">📋</button>
+                </div>
+                <div class="connect-meta">Expires: ${exp.toLocaleString()}</div>
+            </div>`;
+        if (tg) tg.HapticFeedback?.notificationOccurred('success');
+    } catch (err) {
+        resultEl.innerHTML = `<span class="connect-error">❌ ${err.message}</span>`;
+    }
+};
+
+window.copyConnectUrl = async function(url, btnEl) {
+    try {
+        await navigator.clipboard.writeText(url);
+        const orig = btnEl.textContent;
+        btnEl.textContent = '✅';
+        if (tg) tg.HapticFeedback?.impactOccurred('light');
+        setTimeout(() => { btnEl.textContent = orig; }, 1500);
+    } catch {
+        // Fallback for Telegram WebApp
+        const input = document.createElement('input');
+        input.value = url;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        const orig = btnEl.textContent;
+        btnEl.textContent = '✅';
+        setTimeout(() => { btnEl.textContent = orig; }, 1500);
     }
 };
 

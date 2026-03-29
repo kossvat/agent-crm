@@ -1059,3 +1059,58 @@ main { flex: 1; padding: 8px 12px 16px; }
     letter-spacing: 0.5px;
     margin: 10px 0 6px;
 }
+
+/* --- Connect Remote Agent --- */
+.connect-section { margin-bottom: 12px; }
+.connect-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.connect-title { font-weight: 600; font-size: 15px; }
+.btn-sm {
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    cursor: pointer;
+    background: var(--tg-theme-secondary-bg-color, #2a2a2a);
+    color: var(--tg-theme-text-color, #fff);
+}
+.btn-sm:active { opacity: 0.7; }
+.btn-accent {
+    background: var(--tg-theme-button-color, #3390ec);
+    color: var(--tg-theme-button-text-color, #fff);
+}
+.btn-copy { background: transparent; padding: 5px 8px; }
+.connect-result { margin-bottom: 10px; }
+.connect-result.hidden { display: none; }
+.connect-loading { color: var(--tg-theme-hint-color, #888); font-size: 13px; }
+.connect-error { color: #ff5555; font-size: 13px; }
+.connect-new-link { display: flex; flex-direction: column; gap: 8px; }
+.connect-label { font-size: 13px; color: var(--tg-theme-hint-color, #888); }
+.connect-url-row { display: flex; gap: 6px; align-items: center; }
+.connect-url-input {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--tg-theme-hint-color, #444);
+    background: var(--tg-theme-secondary-bg-color, #1a1a1a);
+    color: var(--tg-theme-text-color, #fff);
+    font-size: 12px;
+    font-family: monospace;
+}
+.connect-meta { font-size: 12px; color: var(--tg-theme-hint-color, #888); }
+.connect-pending { display: flex; flex-direction: column; gap: 6px; }
+.connect-token-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-top: 1px solid var(--tg-theme-hint-color, #333);
+}
+.connect-token-info { display: flex; flex-direction: column; gap: 2px; }
+.connect-token-preview { font-size: 12px; color: var(--tg-theme-text-color, #fff); }
+.connect-token-expiry { font-size: 11px; color: var(--tg-theme-hint-color, #888); }
+.connect-empty { font-size: 13px; color: var(--tg-theme-hint-color, #666); text-align: center; padding: 8px 0; }
