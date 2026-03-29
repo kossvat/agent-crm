@@ -5,20 +5,28 @@ Two separate limits:
 1. Weekly session: resets every Saturday 8pm EDT (Sunday 00:00 UTC)
 2. Current session: 5-hour rolling window
 
-Anthropic tracks usage by equivalent API cost, not raw tokens.
-Limits calibrated from real Max $100 data (March 2026):
-  - Weekly: $231 used = 95% → limit ≈ $243
-  - Session: $58.6 used = 33% → limit ≈ $177
+IMPORTANT — Cost accuracy notes:
+- Costs in spending.db use REAL Anthropic API pricing ($15/$75 per M for Opus,
+  $3/$15 for Sonnet), recalculated from raw token counts.
+- OpenClaw internally uses Vercel AI Gateway prices (3x lower) — we correct this.
+- Anthropic's session/weekly % on claude.ai includes THINKING tokens that are
+  NOT reported in OpenClaw's usage data (summarized thinking only). This means
+  our visible cost underestimates real Anthropic billing, especially for Opus.
+- Limits are empirically calibrated from Anthropic UI screenshot comparisons.
+
+Calibration data (2026-03-29, Max 5x $100 plan):
+  Point 1: 2:03 AM UTC — our visible cost $70.04, Anthropic 100% session
+  Point 2: 14:53 UTC — our visible cost $68.37 weekly, Anthropic 17% weekly
+  → session limit ≈ $70 (Max 5x), weekly limit ≈ $402 (Max 5x)
 
 Plans scale proportionally: Pro=1x, Max5x=5x, Max20x=20x.
 """
 
 # Base cost limits (Pro $20 = 1x)
-# Max $100: weekly $279 (3%), session $96.6 (31%)
-# Calibrated 2026-03-29: $8.37 weekly = 3%, $29.95 session = 31%
-# Pro = Max/5
-BASE_WEEKLY_COST = 55.8    # $279 / 5x
-BASE_SESSION_COST = 19.3   # $96.6 / 5x
+# Empirically calibrated from Anthropic UI comparisons:
+# Max 5x ($100): session ≈$70, weekly ≈$402
+BASE_WEEKLY_COST = 80.4    # $402 / 5x
+BASE_SESSION_COST = 14.0   # $70 / 5x
 
 PLAN_TIERS = [
     {"name": "Pro", "cost": 20, "multiplier": 1},
