@@ -194,3 +194,17 @@ class Alert(Base):
     is_read = Column(Boolean, default=False)
 
     agent = relationship("Agent", back_populates="alerts")
+
+
+class ConnectToken(Base):
+    """Magic link token for remote agent bootstrap."""
+    __tablename__ = "connect_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created = Column(DateTime(timezone=True), default=utcnow)
+    expires = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)

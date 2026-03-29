@@ -25,6 +25,29 @@ def create_access_token(user_id: int, workspace_id: int) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
+def create_workspace_token(workspace_id: int, days: int = 30) -> str:
+    """Create a long-lived JWT for remote agent ingest. No user_id — workspace-scoped."""
+    payload = {
+        "workspace_id": workspace_id,
+        "type": "workspace",
+        "exp": datetime.now(timezone.utc) + timedelta(days=days),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def decode_workspace_token(token: str) -> dict:
+    """Decode a workspace-scoped JWT. Returns {workspace_id}."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise ValueError("Workspace token expired")
+    except jwt.InvalidTokenError as e:
+        raise ValueError(f"Invalid workspace token: {e}")
+    if payload.get("type") != "workspace":
+        raise ValueError("Not a workspace token")
+    return {"workspace_id": payload["workspace_id"]}
+
+
 def decode_access_token(token: str) -> dict:
     """Decode and validate a JWT token. Returns payload dict."""
     try:
