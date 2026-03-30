@@ -405,8 +405,8 @@ window.addEventListener('hashchange', () => {
     }, { passive: true });
 
     document.addEventListener('touchmove', (e) => {
-        const app = document.getElementById('app');
-        const scrollTop = app ? app.scrollTop : 0;
+        const wrapper = document.querySelector('.app-content-wrapper') || document.getElementById('app');
+        const scrollTop = wrapper ? wrapper.scrollTop : 0;
         const dy = e.touches[0].clientY - startY;
         // If at top and pulling down, prevent default (stops TG close)
         if (scrollTop <= 0 && dy > 0) {
@@ -969,7 +969,7 @@ async function renderAgents(el) {
     }
 
     el.innerHTML = restartBanner + limitInfo + connectSection + (agents.length
-        ? agents.map(a => `<div class="card agent-card-full">
+        ? '<div class="agents-grid">' + agents.map(a => `<div class="card agent-card-full">
             <div class="agent-header">
                 <div class="agent-emoji">${a.emoji}</div>
                 <div class="agent-info">
@@ -994,7 +994,7 @@ async function renderAgents(el) {
                     <span>Cost: <strong style="color:var(--text);font-size:13px">$${a.daily_cost.toFixed(2)}</strong>/day</span>
                 </div>
             </div>
-        </div>`).join('')
+        </div>`).join('') + '</div>'
         : '<div class="empty-state"><div class="empty-icon">🤖</div><p>No agents</p></div>');
 }
 
@@ -1433,7 +1433,7 @@ async function renderCrons(el) {
     }
 
     el.innerHTML = crons.length
-        ? crons.map(c => {
+        ? '<div class="crons-grid">' + crons.map(c => {
             const nextRun = c.next_run ? new Date(c.next_run).toLocaleString() : '—';
             return `<div class="card cron-card">
                 <div class="cron-header">
@@ -1449,7 +1449,7 @@ async function renderCrons(el) {
                 </div>
                 ${c.description ? `<div class="cron-desc">${escapeHtml(c.description)}</div>` : ''}
             </div>`;
-        }).join('')
+        }).join('') + '</div>'
         : '<div class="empty-state"><div class="empty-icon">⏰</div><p>No cron jobs</p></div>';
 
     // Inline expand on click

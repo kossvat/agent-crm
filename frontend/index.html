@@ -11,18 +11,10 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260326b">
+    <link rel="stylesheet" href="style.css?v=20260330a">
 </head>
 <body>
     <div id="app">
-        <header id="header">
-            <h1 id="page-title">Dashboard</h1>
-        </header>
-
-        <main id="content">
-            <div class="loading">Loading...</div>
-        </main>
-
         <nav id="bottom-nav">
             <button class="nav-btn active" data-route="dashboard">
                 <span class="nav-icon">📊</span>
@@ -53,6 +45,16 @@
                 <span class="nav-label">Alerts</span>
             </button>
         </nav>
+
+        <div class="app-content-wrapper">
+            <header id="header">
+                <h1 id="page-title">Dashboard</h1>
+            </header>
+
+            <main id="content">
+                <div class="loading">Loading...</div>
+            </main>
+        </div>
     </div>
 
     <!-- Onboarding Wizard -->
@@ -129,6 +131,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=20260326b"></script>
+    <script src="app.js?v=20260330a"></script>
 </body>
 </html>

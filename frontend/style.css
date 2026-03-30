@@ -58,6 +58,15 @@ header {
 }
 header h1 { font-size: 22px; font-weight: 700; }
 
+/* Content wrapper (desktop sidebar layout) */
+.app-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
 main { flex: 1; padding: 8px 12px 16px; }
 
 /* Bottom Nav */
@@ -1246,5 +1255,221 @@ main {
 @media (max-width: 400px) {
     .journal-actions {
         flex-wrap: wrap;
+    }
+}
+
+/* ============================================
+   DESKTOP LAYOUT (768px+)
+   ============================================ */
+@media (min-width: 768px) {
+    /* Reset mobile fixed body */
+    body {
+        position: static;
+        overflow-y: auto;
+    }
+
+    #app {
+        flex-direction: row;
+        height: 100vh;
+        padding-bottom: 0;
+        overflow: hidden;
+    }
+
+    /* Bottom nav → Sidebar */
+    #bottom-nav {
+        position: static;
+        flex-direction: column;
+        width: 220px;
+        min-width: 220px;
+        border-top: none;
+        border-right: 1px solid var(--border);
+        padding: 16px 8px;
+        gap: 4px;
+        overflow-x: visible;
+        overflow-y: auto;
+    }
+
+    .nav-btn {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-size: 14px;
+        min-width: unset;
+        transition: background 0.15s;
+    }
+    .nav-btn:hover {
+        background: var(--card-bg);
+    }
+    .nav-btn.active {
+        background: rgba(108, 99, 255, 0.12);
+    }
+    .nav-icon { font-size: 18px; }
+    .nav-label {
+        font-size: 14px;
+        font-weight: 500;
+        display: inline !important;
+    }
+
+    /* Header */
+    header {
+        position: static;
+        padding: 20px 28px 12px;
+    }
+    header h1 { font-size: 24px; }
+
+    /* Main content */
+    main {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 28px 24px;
+        max-width: 1200px;
+    }
+
+    /* Dashboard: wider grid */
+    .summary-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    /* Cards: hover effect */
+    .card:hover {
+        border-color: var(--btn-bg);
+        transform: none;
+    }
+    .card:active { transform: none; }
+
+    /* Kanban: all columns visible */
+    .kanban-container {
+        overflow-x: visible;
+        scroll-snap-type: none;
+    }
+    .kanban-column {
+        min-width: 240px;
+        max-width: 340px;
+        flex: 1;
+    }
+
+    /* Kanban dots hidden */
+    .kanban-dots { display: none; }
+
+    /* Modal: centered, not bottom-sheet */
+    .modal-overlay {
+        align-items: center;
+    }
+    .modal {
+        border-radius: var(--radius);
+        max-width: 520px;
+        max-height: 80vh;
+        animation: modalFadeIn 0.2s ease-out;
+    }
+    @keyframes modalFadeIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    /* FAB position */
+    .btn-fab {
+        bottom: 24px;
+        right: 24px;
+    }
+
+    /* Agent cards: grid layout */
+    .agents-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 12px;
+    }
+    .agents-grid .agent-card-full {
+        margin-bottom: 0;
+    }
+
+    /* Budget bars side by side */
+    .budget-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    .budget-row .budget-bar {
+        margin-bottom: 0;
+    }
+
+    /* Charts side by side */
+    .charts-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    .chart-container {
+        height: 280px;
+    }
+
+    /* Sessions grid */
+    .sessions-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 10px;
+    }
+    .sessions-list .card {
+        margin-bottom: 0;
+    }
+
+    /* Cron cards: 2-column */
+    .crons-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 12px;
+    }
+    .crons-grid .cron-card {
+        margin-bottom: 0;
+    }
+
+    /* Alert cards: narrower */
+    .alerts-list {
+        max-width: 700px;
+    }
+
+    /* Connect section wider */
+    .connect-url-row {
+        flex-direction: row;
+    }
+
+    /* Onboarding: centered nicely */
+    .onboarding-content {
+        max-width: 500px;
+    }
+}
+
+/* ============================================
+   WIDE DESKTOP (1200px+)
+   ============================================ */
+@media (min-width: 1200px) {
+    #bottom-nav {
+        width: 260px;
+        min-width: 260px;
+        padding: 20px 12px;
+    }
+    .nav-btn {
+        padding: 12px 18px;
+    }
+    main {
+        padding: 16px 40px 32px;
+    }
+    header {
+        padding: 24px 40px 16px;
+    }
+    header h1 { font-size: 26px; }
+}
+
+/* ============================================
+   ORDER FIX: sidebar before content on desktop
+   ============================================ */
+@media (min-width: 768px) {
+    #bottom-nav { order: -1; }
+    .app-content-wrapper {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow-y: auto;
     }
 }
