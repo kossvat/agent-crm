@@ -18,6 +18,66 @@ if (tg) {
 const API_BASE = '/api';
 const REFRESH_INTERVAL = 30000;
 
+// --- Toast Notification System ---
+function showToast(message, type = 'info', options = {}) {
+    const { title, duration = 4000 } = options;
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const icons = { error: '❌', warning: '⚠️', success: '✅', info: 'ℹ️' };
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.style.position = 'relative';
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || icons.info}</span>
+        <div class="toast-body">
+            ${title ? `<div class="toast-title">${title}</div>` : ''}
+            <div class="toast-message">${message}</div>
+        </div>
+        <button class="toast-close">&times;</button>
+        <div class="toast-progress" style="animation-duration:${duration}ms"></div>
+    `;
+
+    // Haptic feedback
+    if (tg?.HapticFeedback) {
+        if (type === 'error') tg.HapticFeedback.notificationOccurred('error');
+        else if (type === 'success') tg.HapticFeedback.notificationOccurred('success');
+        else tg.HapticFeedback.impactOccurred('light');
+    }
+
+    // Close handlers
+    const dismiss = () => {
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 250);
+    };
+    toast.querySelector('.toast-close').addEventListener('click', dismiss);
+    toast.addEventListener('click', (e) => {
+        if (!e.target.closest('.toast-close')) dismiss();
+    });
+
+    container.appendChild(toast);
+
+    // Auto-dismiss
+    setTimeout(dismiss, duration);
+
+    // Max 3 toasts
+    while (container.children.length > 3) {
+        container.firstChild.remove();
+    }
+}
+
+// --- Network Status ---
+let isOffline = false;
+window.addEventListener('online', () => {
+    isOffline = false;
+    document.getElementById('offline-banner')?.classList.add('hidden');
+    showToast('Back online', 'success', { duration: 2000 });
+});
+window.addEventListener('offline', () => {
+    isOffline = true;
+    document.getElementById('offline-banner')?.classList.remove('hidden');
+});
+
 // --- State ---
 let currentRoute = 'dashboard';
 let agents = [];
@@ -45,13 +105,34 @@ async function api(path, options = {}) {
     if (jwtToken) headers['Authorization'] = `Bearer ${jwtToken}`;
     if (tg?.initData) headers['X-Telegram-Init-Data'] = tg.initData;
 
-    const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    let resp;
+    try {
+        resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    } catch (networkErr) {
+        throw new ApiError('Network error — check your connection', 0, path);
+    }
+
     if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(err.detail || `API Error ${resp.status}`);
+        if (resp.status === 429) {
+            const retry = resp.headers.get('Retry-After') || '30';
+            throw new ApiError(`Too many requests. Try again in ${retry}s`, 429, path);
+        }
+        if (resp.status === 401) {
+            throw new ApiError('Session expired — reopen the app', 401, path);
+        }
+        throw new ApiError(err.detail || `Server error (${resp.status})`, resp.status, path);
     }
     if (resp.status === 204) return null;
     return resp.json();
+}
+
+class ApiError extends Error {
+    constructor(message, status, path) {
+        super(message);
+        this.status = status;
+        this.path = path;
+    }
 }
 
 // --- JWT Auth Flow ---
@@ -299,7 +380,7 @@ window.importFromOpenClaw = async function() {
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
         renderOnboardingStep();
     } catch (e) {
-        alert('Failed to connect: ' + e.message);
+        showToast(e.message, 'error', { title: 'Connection failed' });
     }
 };
 
@@ -309,7 +390,7 @@ window.addManualAgent = async function() {
     const model = document.getElementById('ob-agent-model')?.value?.trim() || '';
     const role = document.getElementById('ob-agent-role')?.value?.trim() || '';
 
-    if (!name) { alert('Name is required'); return; }
+    if (!name) { showToast('Agent name is required', 'warning');  return; }
 
     try {
         const created = await api('/agents', {
@@ -320,13 +401,13 @@ window.addManualAgent = async function() {
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
         renderOnboardingStep();
     } catch (e) {
-        alert('Failed to add agent: ' + e.message);
+        showToast(e.message, 'error', { title: 'Failed to add agent' });
     }
 };
 
 window.onboardingCreateTask = async function() {
     const title = document.getElementById('ob-task-title')?.value?.trim();
-    if (!title) { alert('Title is required'); return; }
+    if (!title) { showToast('Task title is required', 'warning');  return; }
 
     const agentId = document.getElementById('ob-task-agent')?.value || null;
     try {
@@ -342,7 +423,7 @@ window.onboardingCreateTask = async function() {
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
         onboardingNext();
     } catch (e) {
-        alert('Failed to create task: ' + e.message);
+        showToast(e.message, 'error', { title: 'Failed to save task' });
     }
 };
 
@@ -433,7 +514,18 @@ async function render() {
             default: content.innerHTML = '<div class="empty-state"><p>Not found</p></div>';
         }
     } catch (err) {
-        content.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>${err.message}</p></div>`;
+        const isNetwork = err.status === 0 || !navigator.onLine;
+        const isAuth = err.status === 401;
+        const icon = isNetwork ? '📡' : isAuth ? '🔒' : '⚠️';
+        const hint = isNetwork ? 'Check your internet connection'
+            : isAuth ? 'Your session expired — reopen the app'
+            : 'Something went wrong';
+        content.innerHTML = `<div class="empty-state empty-state-error">
+            <div class="empty-icon">${icon}</div>
+            <p>${hint}</p>
+            <button class="btn-retry" onclick="render()">🔄 Retry</button>
+        </div>`;
+        showToast(err.message, 'error');
     }
 }
 
@@ -684,7 +776,7 @@ window.systemAction = async function(action) {
         await api(`/system/${action}`, { method: 'POST' });
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
         render();
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message, 'error'); }
 };
 
 // ============================================
@@ -1016,7 +1108,7 @@ window.changeAgentModel = async function(agentId, model) {
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
         render(); // Re-render to show restart banner
     } catch (err) {
-        alert(err.message);
+        showToast(err.message, 'error');
         render();
     }
 };
@@ -1072,7 +1164,7 @@ window.restartGateway = async function() {
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
         render();
     } catch (err) {
-        alert('Restart failed: ' + err.message);
+        showToast(err.message, 'error', { title: 'Restart failed' });
     }
 };
 
@@ -1201,10 +1293,9 @@ window.systemFix = async function() {
                 msg += `  ${agent}: $${data.cost} (${data.messages} msgs)\n`;
             }
         }
-        alert(msg);
-        if (tg) tg.HapticFeedback?.notificationOccurred('warning');
+        showToast(msg, 'success', { title: 'System action' });
         render();
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message, 'error'); }
 };
 
 function alertCardHTML(a) {
@@ -1295,7 +1386,7 @@ document.getElementById('task-form').addEventListener('submit', async (e) => {
         closeModal();
         render();
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message, 'error'); }
 });
 
 window.deleteCurrentTask = async function() {
@@ -1307,7 +1398,7 @@ window.deleteCurrentTask = async function() {
         closeModal();
         render();
         if (tg) tg.HapticFeedback?.notificationOccurred('warning');
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message, 'error'); }
 };
 
 // ============================================
@@ -1366,10 +1457,10 @@ window.importMemory = async function() {
     try {
         const result = await api('/journal/import-memory', { method: 'POST' });
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
-        alert(`Imported ${result.imported} entries`);
+        showToast(`Imported ${result.imported} entries`, 'success');
         render();
     } catch (err) {
-        alert('Import failed: ' + err.message);
+        showToast(err.message, 'error', { title: 'Import failed' });
     }
 };
 
@@ -1422,7 +1513,7 @@ window.openJournalEditor = function(entryId = null) {
             closeModal();
             render();
             if (tg) tg.HapticFeedback?.notificationOccurred('success');
-        } catch (err) { alert(err.message); }
+        } catch (err) { showToast(err.message, 'error'); }
     });
 
     overlay.classList.remove('hidden');
@@ -1478,7 +1569,7 @@ window.toggleCron = async function(id, enabled) {
         await api(`/crons/${id}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
         if (tg) tg.HapticFeedback?.impactOccurred('light');
     } catch (err) {
-        alert(err.message);
+        showToast(err.message, 'error');
         render();
     }
 };
@@ -1531,7 +1622,7 @@ window.openFileModal = async function(agent, filename) {
             <div class="modal-body markdown-body">${marked.parse(data.content)}</div>
         `;
         overlay.classList.remove('hidden');
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message, 'error'); }
 };
 
 function formatBytes(bytes) {

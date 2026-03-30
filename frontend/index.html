@@ -14,6 +14,11 @@
     <link rel="stylesheet" href="style.css?v=20260330a">
 </head>
 <body>
+    <div id="offline-banner" class="offline-banner hidden">
+        <span>📡 Connection lost</span>
+        <button class="retry-btn" onclick="location.reload()">Retry</button>
+    </div>
+    <div id="toast-container" class="toast-container"></div>
     <div id="app">
         <nav id="bottom-nav">
             <button class="nav-btn active" data-route="dashboard">
