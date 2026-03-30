@@ -754,6 +754,51 @@ main { flex: 1; padding: 8px 12px 16px; }
 .markdown-body blockquote { border-left: 3px solid var(--link); padding-left: 12px; margin: 8px 0; color: var(--text-hint); }
 .markdown-body strong { color: var(--btn-bg); }
 
+/* Session Cards */
+.session-card {
+    padding: 12px 14px;
+}
+.session-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.session-agent {
+    font-weight: 600;
+    font-size: 15px;
+}
+.session-cost {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--text);
+}
+.session-bar-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+.session-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+.session-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.session-msgs {
+    font-size: 12px;
+    color: var(--text-hint);
+}
+.session-time {
+    font-size: 11px;
+    color: var(--text-hint);
+}
+
 /* Chart */
 .chart-container {
     background: var(--card-bg);

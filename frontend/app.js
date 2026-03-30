@@ -577,12 +577,21 @@ async function renderDashboard(el) {
         <div class="sessions-list">
             ${sessions.map(s => {
                 const agentEmoji = agents.find(a => a.name?.toLowerCase() === s.agent?.toLowerCase())?.emoji || '🤖';
+                const maxCost = Math.max(...sessions.map(x => x.cost), 1);
+                const barPct = Math.min(100, (s.cost / maxCost) * 100);
+                const barColor = s.cost > 10 ? 'var(--error)' : s.cost > 5 ? 'var(--warning)' : 'var(--success)';
+                const lastActive = s.last_active ? timeAgo(s.last_active) : '';
                 return `<div class="card session-card">
-                    <div class="session-agent">${agentEmoji} ${s.agent}</div>
-                    <div class="session-meta">
-                        <span class="session-id">${(s.session_id || '').slice(0, 8)}</span>
+                    <div class="session-top">
+                        <span class="session-agent">${agentEmoji} ${s.agent}</span>
                         <span class="session-cost">$${s.cost.toFixed(2)}</span>
-                        <span class="session-msgs">${s.messages} msgs</span>
+                    </div>
+                    <div class="session-bar-track">
+                        <div class="session-bar-fill" style="width:${barPct}%;background:${barColor}"></div>
+                    </div>
+                    <div class="session-bottom">
+                        <span class="session-msgs">💬 ${s.messages}</span>
+                        ${lastActive ? `<span class="session-time">${lastActive}</span>` : ''}
                     </div>
                 </div>`;
             }).join('')}
