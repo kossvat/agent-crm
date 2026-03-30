@@ -54,8 +54,7 @@ Conversation text is NEVER parsed, extracted, or transmitted.
 
 ## Your Data, Your Control
 
-- **Open source**: The sync script (`agentcrm-sync`) is fully open source. You can audit every line of code that runs on your machine.
-- **Self-hosted option**: You can run the entire CRM server on your own infrastructure. Same Docker image, full control.
+- **Auditable sync script**: The sync script that runs on your machine is readable Python — you can inspect exactly what data it collects and sends. No obfuscation, no hidden payloads.
 - **Data deletion**: Request full data deletion at any time. We remove all usage records, agent configs, and workspace data.
 - **No third-party sharing**: We do not sell, share, or provide your data to any third party.
 
@@ -92,8 +91,8 @@ A: No. The sync script runs locally on your machine. We have no remote access, S
 **Q: What if I stop using AgentCRM?**
 A: Uninstall the sync script, and no more data is sent. Request data deletion and we wipe everything.
 
-**Q: Is the sync script open source?**
-A: Yes. Full source code available for audit. You can see exactly what data is collected and sent.
+**Q: Can I see what the sync script sends?**
+A: Yes. The sync script is readable Python code on your machine. You can inspect exactly what data is collected and transmitted.
 
 **Q: Can other users see my data?**
 A: No. Strict workspace isolation in the database. All queries are scoped by workspace_id.
