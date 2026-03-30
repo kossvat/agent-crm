@@ -80,6 +80,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limiting (before CORS so 429 still gets CORS headers)
+import os
+if os.environ.get("DISABLE_RATE_LIMIT") != "true":
+    from backend.middleware.rate_limit import RateLimitMiddleware
+    app.add_middleware(
+        RateLimitMiddleware,
+        rules=[
+            # (path_prefix, max_requests, window_seconds)
+            ("/api/ingest", 30, 60),       # 30 req/min — bulk endpoint
+            ("/api/auth", 10, 60),          # 10 req/min — login
+            ("/api/connect/generate", 5, 60),  # 5 req/min — magic links
+            ("/api/tasks", 60, 60),         # 60 req/min — normal CRUD
+            ("/api/sync", 5, 60),           # 5 req/min — manual sync
+        ],
+    )
+
 # CORS — allow Telegram WebApp domains
 app.add_middleware(
     CORSMiddleware,

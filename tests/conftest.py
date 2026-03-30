@@ -10,6 +10,7 @@ os.environ["DATABASE_URL"] = "sqlite:///test_crm.db"
 os.environ["DEV_MODE"] = "false"
 os.environ["SECRET_KEY"] = "test-secret-key-minimum-32-bytes-long!!"
 os.environ["BOT_TOKEN"] = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+os.environ["DISABLE_RATE_LIMIT"] = "true"
 
 from fastapi.testclient import TestClient
 from backend.main import app
