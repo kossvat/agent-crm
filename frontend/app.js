@@ -1767,7 +1767,17 @@ function timeAgo(dateStr) {
 
         // Check if invite is needed
         if (user && user.needs_invite) {
-            showInviteScreen();
+            // Check for deep link invite code in hash: #invite=CODE
+            const hashInvite = window.location.hash.match(/invite=([A-Za-z0-9]+)/);
+            if (hashInvite) {
+                // Auto-fill and try the code
+                window.location.hash = '';
+                showInviteScreen();
+                const input = document.getElementById('invite-code-input');
+                if (input) input.value = hashInvite[1];
+            } else {
+                showInviteScreen();
+            }
             return;
         }
 
