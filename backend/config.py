@@ -31,3 +31,6 @@ OPENCLAW_DIR: str = os.getenv("OPENCLAW_DIR", str(Path.home() / ".openclaw"))
 # Server
 HOST: str = os.getenv("HOST", "127.0.0.1")
 PORT: int = int(os.getenv("PORT", "8100"))
+
+# Invite system (closed beta)
+REQUIRE_INVITE: bool = os.getenv("REQUIRE_INVITE", "true").lower() in ("true", "1", "yes")

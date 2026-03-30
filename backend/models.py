@@ -196,6 +196,21 @@ class Alert(Base):
     agent = relationship("Agent", back_populates="alerts")
 
 
+class InviteCode(Base):
+    """Beta invite codes — required for new user registration."""
+    __tablename__ = "invite_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(32), unique=True, nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # null = system-generated
+    used_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    max_uses = Column(Integer, default=1)
+    use_count = Column(Integer, default=0)
+    note = Column(String(255), default="")  # e.g. "for Discord giveaway"
+    created = Column(DateTime(timezone=True), default=utcnow)
+    expires = Column(DateTime(timezone=True), nullable=True)
+
+
 class ConnectToken(Base):
     """Magic link token for remote agent bootstrap."""
     __tablename__ = "connect_tokens"

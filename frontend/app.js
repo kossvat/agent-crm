@@ -149,6 +149,10 @@ async function authenticateUser() {
             currentUser = authResp.user;
             return authResp.user;
         } catch (e) {
+            if (e.status === 403 && (e.message === 'invite_required' || e.message === 'invalid_invite')) {
+                // New user needs invite code
+                return { needs_invite: true };
+            }
             console.warn('Telegram auth failed:', e.message);
         }
     }
@@ -168,6 +172,101 @@ async function authenticateUser() {
     }
 
     return null;
+}
+
+// --- Invite Code Screen ---
+function showInviteScreen(errorMsg = '') {
+    const overlay = document.getElementById('onboarding-overlay');
+    const content = document.getElementById('onboarding-content');
+    const nav = document.getElementById('bottom-nav');
+    overlay.classList.remove('hidden');
+    nav.style.display = 'none';
+
+    content.innerHTML = `
+        <div class="onboarding-step">
+            <div class="onboarding-emoji">🔑</div>
+            <div class="onboarding-title">Invite Only</div>
+            <div class="onboarding-subtitle">
+                AgentCRM is in closed beta.<br>
+                Enter your invite code to get started.
+            </div>
+            <div class="onboarding-form">
+                <div class="field">
+                    <input type="text" id="invite-code-input"
+                        placeholder="Enter invite code"
+                        maxlength="16"
+                        autocomplete="off"
+                        autocapitalize="characters"
+                        style="text-align:center; font-size:20px; letter-spacing:3px; text-transform:uppercase; font-weight:700;">
+                </div>
+                ${errorMsg ? `<div style="color:var(--error); font-size:13px; text-align:center; margin-bottom:12px;">${errorMsg}</div>` : ''}
+            </div>
+            <button class="onboarding-btn" id="invite-submit-btn" onclick="submitInviteCode()">Continue</button>
+            <div style="margin-top:20px; font-size:12px; color:var(--text-hint);">
+                Don't have a code? Join our <a href="https://t.me/agentforgeai" style="color:var(--link);">Telegram</a> for updates.
+            </div>
+        </div>
+    `;
+
+    // Focus input
+    setTimeout(() => {
+        const input = document.getElementById('invite-code-input');
+        if (input) input.focus();
+    }, 300);
+
+    // Enter key submit
+    document.getElementById('invite-code-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submitInviteCode();
+    });
+}
+
+async function submitInviteCode() {
+    const input = document.getElementById('invite-code-input');
+    const btn = document.getElementById('invite-submit-btn');
+    const code = input?.value?.trim();
+
+    if (!code) {
+        showInviteScreen('Please enter an invite code');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
+
+    try {
+        // First validate
+        const check = await api(`/auth/invites/check/${encodeURIComponent(code)}`);
+        if (!check.valid) {
+            showInviteScreen('Invalid or expired invite code');
+            return;
+        }
+
+        // Now auth with invite code
+        const authResp = await api('/auth/telegram', {
+            method: 'POST',
+            body: JSON.stringify({
+                init_data: tg?.initData || '',
+                invite_code: code,
+            }),
+        });
+
+        jwtToken = authResp.access_token;
+        localStorage.setItem('crm_jwt', jwtToken);
+        currentUser = authResp.user;
+
+        if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+        showToast('Welcome to AgentCRM! 🎉', 'success', { duration: 3000 });
+
+        // Continue to onboarding or dashboard
+        hideOnboarding();
+        if (!currentUser.onboarding_complete) {
+            showOnboarding();
+        } else {
+            render();
+        }
+    } catch (e) {
+        showInviteScreen(e.message || 'Something went wrong');
+    }
 }
 
 // --- Onboarding Wizard ---
@@ -1664,6 +1763,12 @@ function timeAgo(dateStr) {
             } catch (e) {
                 console.warn('Failed to load /me:', e.message);
             }
+        }
+
+        // Check if invite is needed
+        if (user && user.needs_invite) {
+            showInviteScreen();
+            return;
         }
 
         // Check onboarding

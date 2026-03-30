@@ -5,14 +5,33 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import User, Workspace, TierType
+from backend.models import User, Workspace, TierType, InviteCode
 from backend.auth import validate_init_data, create_access_token, get_current_user
+from backend.config import REQUIRE_INVITE
+
+import secrets
+from datetime import datetime, timezone, timedelta
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+def _validate_invite(db: Session, code: str) -> InviteCode | None:
+    """Validate an invite code. Returns InviteCode if valid, None otherwise."""
+    invite = db.query(InviteCode).filter(InviteCode.code == code.strip().upper()).first()
+    if not invite:
+        return None
+    if invite.use_count >= invite.max_uses:
+        return None
+    if invite.expires:
+        exp = invite.expires if invite.expires.tzinfo else invite.expires.replace(tzinfo=timezone.utc)
+        if exp < datetime.now(timezone.utc):
+            return None
+    return invite
+
+
 class TelegramLoginRequest(BaseModel):
     init_data: str
+    invite_code: str | None = None
 
 
 class AuthResponse(BaseModel):
@@ -38,6 +57,20 @@ def telegram_login(
     # Find or create user
     user = db.query(User).filter(User.telegram_id == telegram_id).first()
     if not user:
+        # New user — check invite code if required
+        if REQUIRE_INVITE:
+            if not data.invite_code:
+                raise HTTPException(
+                    status_code=403,
+                    detail="invite_required"
+                )
+            invite = _validate_invite(db, data.invite_code)
+            if not invite:
+                raise HTTPException(
+                    status_code=403,
+                    detail="invalid_invite"
+                )
+
         name = tg_user.get("first_name", "")
         if tg_user.get("last_name"):
             name += f" {tg_user['last_name']}"
@@ -47,6 +80,14 @@ def telegram_login(
         )
         db.add(user)
         db.flush()
+
+        # Mark invite as used
+        if REQUIRE_INVITE and data.invite_code:
+            invite = db.query(InviteCode).filter(InviteCode.code == data.invite_code.strip().upper()).first()
+            if invite:
+                invite.use_count += 1
+                if invite.use_count >= invite.max_uses:
+                    invite.used_by = user.id
 
         # Create default workspace for new user
         workspace = Workspace(
@@ -154,3 +195,77 @@ def get_me(
             "agent_limit": workspace.agent_limit if workspace else 3,
         },
     }
+
+
+# --- Invite Code Management (owner/admin only) ---
+
+class CreateInviteRequest(BaseModel):
+    max_uses: int = 1
+    note: str = ""
+    expires_hours: int | None = None  # None = never expires
+
+
+@router.post("/invites")
+def create_invite(
+    data: CreateInviteRequest,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate invite codes. Owner only."""
+    if not user.get("is_owner"):
+        raise HTTPException(status_code=403, detail="Owner only")
+
+    code = secrets.token_hex(4).upper()  # 8-char hex code like "A3F7B2C1"
+    expires = None
+    if data.expires_hours:
+        expires = datetime.now(timezone.utc) + timedelta(hours=data.expires_hours)
+
+    invite = InviteCode(
+        code=code,
+        created_by=user["user_id"],
+        max_uses=max(1, min(data.max_uses, 100)),
+        note=data.note,
+        expires=expires,
+    )
+    db.add(invite)
+    db.commit()
+
+    return {
+        "code": code,
+        "max_uses": invite.max_uses,
+        "note": invite.note,
+        "expires": expires.isoformat() if expires else None,
+    }
+
+
+@router.get("/invites")
+def list_invites(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all invite codes. Owner only."""
+    if not user.get("is_owner"):
+        raise HTTPException(status_code=403, detail="Owner only")
+
+    invites = db.query(InviteCode).order_by(InviteCode.created.desc()).all()
+    return [
+        {
+            "code": inv.code,
+            "max_uses": inv.max_uses,
+            "use_count": inv.use_count,
+            "note": inv.note,
+            "expires": inv.expires.isoformat() if inv.expires else None,
+            "created": inv.created.isoformat() if inv.created else None,
+            "exhausted": inv.use_count >= inv.max_uses,
+        }
+        for inv in invites
+    ]
+
+
+@router.get("/invites/check/{code}")
+def check_invite(code: str, db: Session = Depends(get_db)):
+    """Public endpoint — check if an invite code is valid (no auth needed)."""
+    invite = _validate_invite(db, code)
+    if invite:
+        return {"valid": True, "remaining": invite.max_uses - invite.use_count}
+    return {"valid": False, "remaining": 0}
