@@ -9,6 +9,9 @@ if (tg) {
     tg.ready();
     tg.expand();
     try { tg.setHeaderColor('secondary_bg_color'); } catch(e) {}
+    // Prevent pull-to-close when scrolling content
+    try { tg.disableVerticalSwipes(); } catch(e) {}
+    try { tg.isVerticalSwipesEnabled = false; } catch(e) {}
 }
 
 // --- Config ---
@@ -393,6 +396,24 @@ window.addEventListener('hashchange', () => {
     const hash = window.location.hash.slice(1) || 'dashboard';
     if (hash !== currentRoute) { currentRoute = hash; updateNav(); render(); }
 });
+
+// --- Prevent Telegram pull-to-close on scroll ---
+(function() {
+    let startY = 0;
+    document.addEventListener('touchstart', (e) => {
+        startY = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+        const app = document.getElementById('app');
+        const scrollTop = app ? app.scrollTop : 0;
+        const dy = e.touches[0].clientY - startY;
+        // If at top and pulling down, prevent default (stops TG close)
+        if (scrollTop <= 0 && dy > 0) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+})();
 
 // --- Render ---
 async function render() {
