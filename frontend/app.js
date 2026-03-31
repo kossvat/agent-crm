@@ -1368,11 +1368,10 @@ async function renderAgents(el) {
                 <div class="agent-detail">
                     <label>Model</label>
                     <div style="display:flex;gap:8px;align-items:center;">
-                        <select class="agent-model-select" id="model-select-${a.id}" data-agent-id="${a.id}" data-original="${a.model || ''}" onchange="onModelSelectChange(${a.id})">
+                        <select class="agent-model-select" id="model-select-${a.id}" data-agent-id="${a.id}" data-original="${a.model || ''}" onchange="onModelDropdownChange(${a.id})">
                             ${availableModels.map(m => `<option value="${m}" ${a.model === m ? 'selected' : ''}>${m.split('/').pop()}</option>`).join('')}
                             ${a.model && !availableModels.includes(a.model) ? `<option value="${a.model}" selected>${a.model.split('/').pop()}</option>` : ''}
                         </select>
-                        <button class="save-model-btn" id="save-model-${a.id}" style="display:none;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;" onclick="changeAgentModel(${a.id})">Save</button>
                         <span id="pending-badge-${a.id}" class="pending-badge" style="display:${pendingAgentNames.has(a.name) ? 'inline-block' : 'none'};">⏳ pending</span>
                     </div>
                 </div>
@@ -1393,27 +1392,21 @@ async function renderAgents(el) {
         </div>`);
 }
 
-window.onModelSelectChange = function(agentId) {
-    const select = document.getElementById(`model-select-${agentId}`);
-    const btn = document.getElementById(`save-model-${agentId}`);
-    if (!select || !btn) return;
-    const changed = select.value !== select.dataset.original;
-    btn.style.display = changed ? 'inline-block' : 'none';
-};
-
-window.changeAgentModel = function(agentId) {
+window.onModelDropdownChange = function(agentId) {
     const select = document.getElementById(`model-select-${agentId}`);
     if (!select) return;
     const model = select.value;
-    const modelShort = model.split('/').pop();
+    const original = select.dataset.original;
+    if (model === original) return;
 
-    // Show confirmation dialog
+    const modelShort = model.split('/').pop();
+    const agent = agents.find(a => a.id === agentId);
+    const agentName = agent?.name || 'Agent';
+
     showConfirmDialog(
-        `Change model to <strong>${modelShort}</strong>? This will apply to your real OpenClaw instance.`,
+        `Change <strong>${agentName}</strong> model to <strong>${modelShort}</strong>?<br><small style="color:var(--text-dim)">Gateway will restart to apply the change.</small>`,
         async () => {
-            const btn = document.getElementById(`save-model-${agentId}`);
             try {
-                btn && (btn.textContent = '...');
                 await api(`/agents/${agentId}`, {
                     method: 'PATCH',
                     body: JSON.stringify({ model }),
@@ -1421,27 +1414,27 @@ window.changeAgentModel = function(agentId) {
                 if (tg) tg.HapticFeedback?.notificationOccurred('success');
                 showToast('Model change queued — will apply within ~1 minute', 'success');
                 select.dataset.original = model;
-                btn && (btn.style.display = 'none');
-                btn && (btn.textContent = 'Save');
-                // Show pending badge
                 const badge = document.getElementById(`pending-badge-${agentId}`);
                 if (badge) {
                     badge.style.display = 'inline-block';
                     badge.textContent = '⏳ pending';
                     badge.className = 'pending-badge';
                 }
-                // Start polling for command status
                 pollCommandStatus(agentId);
             } catch (err) {
                 showToast(err.message, 'error');
-                btn && (btn.textContent = 'Save');
+                select.value = original;
             }
+        },
+        () => {
+            // Cancel — revert dropdown
+            select.value = original;
         }
     );
 };
 
 // --- Confirmation Dialog ---
-function showConfirmDialog(message, onConfirm) {
+function showConfirmDialog(message, onConfirm, onCancel) {
     // Remove existing overlay if any
     document.getElementById('confirm-overlay')?.remove();
 
@@ -1462,14 +1455,14 @@ function showConfirmDialog(message, onConfirm) {
 
     const close = () => overlay.remove();
 
-    overlay.querySelector('#confirm-cancel').addEventListener('click', close);
+    overlay.querySelector('#confirm-cancel').addEventListener('click', () => { close(); if (onCancel) onCancel(); });
     overlay.querySelector('#confirm-ok').addEventListener('click', () => {
         close();
         onConfirm();
     });
     // Close on overlay click (outside card)
     overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) close();
+        if (e.target === overlay) { close(); if (onCancel) onCancel(); }
     });
 }
 
