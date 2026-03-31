@@ -116,6 +116,99 @@ def apply_model_change(agent_name: str, model: str, config_path: Path) -> tuple[
     return True, f"Updated {agent_name} ({agent_id}) model to {model}"
 
 
+def handle_stop_gateway() -> tuple[bool, str]:
+    """Stop gateway and disable all crons."""
+    results = []
+    try:
+        r = subprocess.run(["openclaw", "gateway", "stop"], capture_output=True, text=True, timeout=20)
+        results.append(f"gateway: {'stopped' if r.returncode == 0 else r.stderr[:100]}")
+    except Exception as e:
+        return False, f"Failed to stop gateway: {e}"
+
+    try:
+        r = subprocess.run(
+            ["openclaw", "cron", "list", "--json", "--all"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode == 0:
+            data = json.loads(r.stdout)
+            disabled = 0
+            for cron in data.get("items", []):
+                if cron.get("enabled"):
+                    subprocess.run(["openclaw", "cron", "disable", cron["id"]], timeout=10)
+                    disabled += 1
+            results.append(f"crons disabled: {disabled}")
+    except Exception as e:
+        results.append(f"cron error: {e}")
+
+    return True, "; ".join(results)
+
+
+def handle_resume_gateway() -> tuple[bool, str]:
+    """Start gateway and enable all crons."""
+    results = []
+    try:
+        r = subprocess.run(["openclaw", "gateway", "start"], capture_output=True, text=True, timeout=20)
+        results.append(f"gateway: {'started' if r.returncode == 0 else r.stderr[:100]}")
+    except Exception as e:
+        return False, f"Failed to start gateway: {e}"
+
+    try:
+        r = subprocess.run(
+            ["openclaw", "cron", "list", "--json", "--all"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode == 0:
+            data = json.loads(r.stdout)
+            enabled = 0
+            for cron in data.get("items", []):
+                if not cron.get("enabled"):
+                    subprocess.run(["openclaw", "cron", "enable", cron["id"]], timeout=10)
+                    enabled += 1
+            results.append(f"crons enabled: {enabled}")
+    except Exception as e:
+        results.append(f"cron error: {e}")
+
+    return True, "; ".join(results)
+
+
+def handle_fix_system() -> tuple[bool, str]:
+    """Clear large session files and disable all crons."""
+    results = []
+
+    # Clear large session files (>500KB)
+    agents_dir = Path(os.path.expanduser("~/.openclaw/agents"))
+    cleared = 0
+    if agents_dir.exists():
+        for jsonl in agents_dir.glob("*/sessions/*.jsonl"):
+            try:
+                if jsonl.stat().st_size > 500 * 1024:
+                    jsonl.unlink()
+                    cleared += 1
+            except Exception:
+                pass
+    results.append(f"sessions cleared: {cleared}")
+
+    # Disable all crons
+    try:
+        r = subprocess.run(
+            ["openclaw", "cron", "list", "--json", "--all"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode == 0:
+            data = json.loads(r.stdout)
+            disabled = 0
+            for cron in data.get("items", []):
+                if cron.get("enabled"):
+                    subprocess.run(["openclaw", "cron", "disable", cron["id"]], timeout=10)
+                    disabled += 1
+            results.append(f"crons disabled: {disabled}")
+    except Exception as e:
+        results.append(f"cron error: {e}")
+
+    return True, "; ".join(results)
+
+
 def restart_gateway() -> tuple[bool, str]:
     """Restart OpenClaw gateway."""
     try:
@@ -186,6 +279,24 @@ def main():
 
             if success:
                 applied_any_model = True
+
+        elif cmd_type in ("stop_gateway", "resume_gateway", "fix_system"):
+            if args.dry_run:
+                print(f"    DRY RUN: would execute {cmd_type}")
+                continue
+
+            handler = {
+                "stop_gateway": handle_stop_gateway,
+                "resume_gateway": handle_resume_gateway,
+                "fix_system": handle_fix_system,
+            }[cmd_type]
+
+            success, message = handler()
+            print(f"    {message}")
+
+            ack_data = {"status": "applied"} if success else {"status": "failed", "error": message}
+            api_post(args.url, args.token, f"/api/commands/{cmd_id}/ack", ack_data)
+
         else:
             print(f"    Unknown command type: {cmd_type}, skipping")
             api_post(

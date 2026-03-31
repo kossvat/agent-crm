@@ -866,16 +866,18 @@ async function renderDashboard(el) {
     }).join('');
 
     const hasOpenClaw = sysStatus.gateway === true && sysStatus.status !== 'not_configured';
+    const dashStatusIcon = sysStatus.status === 'not_configured' ? '🔗' : statusIcon;
+    const dashStatusText = sysStatus.status === 'not_configured' ? 'Remote' : statusText;
 
     el.innerHTML = `
-        ${hasOpenClaw ? `<div class="system-bar">
-            <span class="sys-status">${statusIcon} ${statusText}</span>
+        <div class="system-bar">
+            <span class="sys-status">${dashStatusIcon} ${dashStatusText}</span>
             <div class="sys-actions">
                 <button class="btn-sm btn-danger-sm" onclick="systemAction('stop')">⏹ Stop</button>
                 <button class="btn-sm btn-success-sm" onclick="systemAction('resume')">▶ Resume</button>
             </div>
         </div>
-        <div class="budget-bar">
+        ${hasOpenClaw ? `<div class="budget-bar">
             <div class="budget-header">
                 <span class="budget-plan">${spending.plan || 'Pro'} Plan</span>
             </div>
@@ -919,7 +921,7 @@ async function renderDashboard(el) {
                 <div class="summary-label">Alerts</div>
             </div>
         </div>
-        ${hasOpenClaw || dailyTimeline.labels.length ? `
+        ${dailyTimeline.labels.length ? `
         <div class="section-header">Today (hourly)</div>
         <div class="chart-container"><canvas id="dash-daily-chart"></canvas></div>
         <div class="section-header">This Week (daily)</div>
@@ -1033,8 +1035,11 @@ async function renderDashboard(el) {
 window.systemAction = async function(action) {
     if (action === 'stop' && !confirm('Stop gateway and disable all crons?')) return;
     try {
-        await api(`/system/${action}`, { method: 'POST' });
+        const result = await api(`/system/${action}`, { method: 'POST' });
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
+        if (result.queued) {
+            showToast('Command queued — will apply within ~1 minute', 'success');
+        }
         render();
     } catch (err) { showToast(err.message, 'error'); }
 };
@@ -1643,17 +1648,19 @@ async function renderAlerts(el) {
     const asPct = Math.min(100, as2.pct || 0).toFixed(1);
 
     const alertHasOpenClaw = sysStatus.gateway === true && sysStatus.status !== 'not_configured';
+    const alertStatusIcon = sysStatus.status === 'not_configured' ? '🔗' : statusIcon;
+    const alertStatusText = sysStatus.status === 'not_configured' ? 'Remote' : (sysStatus.gateway ? 'Running' : 'Stopped');
 
     el.innerHTML = `
-        ${alertHasOpenClaw ? `<div class="system-bar">
-            <span class="sys-status">${statusIcon} ${sysStatus.gateway ? 'Running' : 'Stopped'}</span>
+        <div class="system-bar">
+            <span class="sys-status">${alertStatusIcon} ${alertStatusText}</span>
             <div class="sys-actions">
                 <button class="btn-sm btn-danger-sm" onclick="systemAction('stop')">⏹ Stop</button>
                 <button class="btn-sm btn-success-sm" onclick="systemAction('resume')">▶ Resume</button>
                 <button class="btn-sm btn-fix-sm" onclick="systemFix()">🔧 Fix</button>
             </div>
         </div>
-        <div class="budget-bar">
+        ${alertHasOpenClaw ? `<div class="budget-bar">
             <div class="limit-section">
                 <div class="limit-header"><span class="limit-label">Weekly: ${awPct}%</span></div>
                 <div class="progress-track"><div class="progress-fill ${awPct > 90 ? 'progress-danger' : awPct > 80 ? 'progress-warn' : ''}" style="width:${awPct}%"></div></div>
@@ -1667,12 +1674,12 @@ async function renderAlerts(el) {
                 <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>
             </div>
         </div>` : ''}
-        ${alertHasOpenClaw || dailyTimeline.labels.length ? `
+        ${dailyTimeline.labels.length ? `
         <div class="section-header">Today (hourly)</div>
         <div class="chart-container"><canvas id="alerts-daily-chart"></canvas></div>
         <div class="section-header">Spending (7 days)</div>
         <div class="chart-container"><canvas id="spending-chart"></canvas></div>` : `
-        ${sysStatus.status === 'not_configured' ? '<div class="empty-state" style="margin:16px 0"><div class="empty-icon">⚙️</div><p>System monitoring available when OpenClaw is connected.</p></div>' : ''}
+        ${sysStatus.status === 'not_configured' ? '<div class="empty-state" style="margin:16px 0"><div class="empty-icon">⚙️</div><p>Spending charts available when OpenClaw is connected.</p></div>' : ''}
         `}
         <div class="section-header">Alerts</div>
         ${alerts.length
@@ -1747,16 +1754,20 @@ window.systemFix = async function() {
     if (!confirm('This will reset agent sessions and pause all crons. Continue?')) return;
     try {
         const result = await api('/system/fix', { method: 'POST' });
-        let msg = '🔧 Fix applied:\n';
-        msg += `Sessions cleared: ${result.cleared_sessions.length}\n`;
-        msg += `Crons paused: ${result.paused_crons.length}\n`;
-        if (Object.keys(result.spending_last_hour).length) {
-            msg += '\nSpending (last hour):\n';
-            for (const [agent, data] of Object.entries(result.spending_last_hour)) {
-                msg += `  ${agent}: $${data.cost} (${data.messages} msgs)\n`;
+        if (result.queued) {
+            showToast('Fix command queued — will apply within ~1 minute', 'success');
+        } else {
+            let msg = '🔧 Fix applied:\n';
+            msg += `Sessions cleared: ${result.cleared_sessions.length}\n`;
+            msg += `Crons paused: ${result.paused_crons.length}\n`;
+            if (Object.keys(result.spending_last_hour || {}).length) {
+                msg += '\nSpending (last hour):\n';
+                for (const [agent, data] of Object.entries(result.spending_last_hour)) {
+                    msg += `  ${agent}: $${data.cost} (${data.messages} msgs)\n`;
+                }
             }
+            showToast(msg, 'success', { title: 'System action' });
         }
-        showToast(msg, 'success', { title: 'System action' });
         render();
     } catch (err) { showToast(err.message, 'error'); }
 };

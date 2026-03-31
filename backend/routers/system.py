@@ -10,8 +10,11 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session as DbSession
 from backend.auth import get_current_user
 from backend.config import OPENCLAW_BIN, OPENCLAW_DIR
+from backend.database import get_db
+from backend.models import PendingCommand
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 log = logging.getLogger("agent-crm.system")
@@ -64,78 +67,99 @@ def system_status(user: dict = Depends(get_current_user)):
     }
 
 
+def _queue_system_command(db: DbSession, user: dict, command_type: str) -> dict:
+    """Create a PendingCommand for a system action (remote execution via sync script)."""
+    ws_id = user.get("workspace_id", 1)
+    cmd = PendingCommand(
+        workspace_id=ws_id,
+        command_type=command_type,
+        payload=json.dumps({"action": command_type}),
+        status="pending",
+        created=datetime.now(timezone.utc),
+    )
+    db.add(cmd)
+    db.commit()
+    db.refresh(cmd)
+    return {"queued": True, "command_id": cmd.id, "command_type": command_type}
+
+
 @router.post("/stop")
-def system_stop(user: dict = Depends(get_current_user)):
+def system_stop(user: dict = Depends(get_current_user), db: DbSession = Depends(get_db)):
     """STOP: stop gateway + disable all crons. Owner only."""
-    if not _openclaw_available():
-        return {"error": "OpenClaw not configured"}
     if not user.get("full_access") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="Owner only")
 
-    results = {"gateway": None, "crons_disabled": []}
+    # If OpenClaw is available locally, execute directly
+    if _openclaw_available():
+        results = {"gateway": None, "crons_disabled": [], "executed": True}
 
-    # Stop gateway
-    code, stdout, stderr = _run_oc(["gateway", "stop"], timeout=20)
-    results["gateway"] = "stopped" if code == 0 else f"error: {stderr[:200]}"
+        code, stdout, stderr = _run_oc(["gateway", "stop"], timeout=20)
+        results["gateway"] = "stopped" if code == 0 else f"error: {stderr[:200]}"
 
-    # Disable all crons
-    code, stdout, stderr = _run_oc(["cron", "list", "--json", "--all"], timeout=15)
-    if code == 0:
-        try:
-            data = json.loads(stdout)
-            for cron in data.get("items", []):
-                if cron.get("enabled"):
-                    cid = cron["id"]
-                    _run_oc(["cron", "disable", cid], timeout=10)
-                    results["crons_disabled"].append(cron.get("name", cid))
-        except json.JSONDecodeError:
-            results["crons_error"] = "Failed to parse cron list"
+        code, stdout, stderr = _run_oc(["cron", "list", "--json", "--all"], timeout=15)
+        if code == 0:
+            try:
+                data = json.loads(stdout)
+                for cron in data.get("items", []):
+                    if cron.get("enabled"):
+                        cid = cron["id"]
+                        _run_oc(["cron", "disable", cid], timeout=10)
+                        results["crons_disabled"].append(cron.get("name", cid))
+            except json.JSONDecodeError:
+                results["crons_error"] = "Failed to parse cron list"
 
-    return results
+        return results
+
+    # Otherwise, queue command for remote execution
+    return _queue_system_command(db, user, "stop_gateway")
 
 
 @router.post("/resume")
-def system_resume(user: dict = Depends(get_current_user)):
+def system_resume(user: dict = Depends(get_current_user), db: DbSession = Depends(get_db)):
     """RESUME: start gateway + enable all crons. Owner only."""
-    if not _openclaw_available():
-        return {"error": "OpenClaw not configured"}
     if not user.get("full_access") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="Owner only")
 
-    results = {"gateway": None, "crons_enabled": []}
+    # If OpenClaw is available locally, execute directly
+    if _openclaw_available():
+        results = {"gateway": None, "crons_enabled": [], "executed": True}
 
-    # Start gateway
-    code, stdout, stderr = _run_oc(["gateway", "start"], timeout=20)
-    results["gateway"] = "started" if code == 0 else f"error: {stderr[:200]}"
+        code, stdout, stderr = _run_oc(["gateway", "start"], timeout=20)
+        results["gateway"] = "started" if code == 0 else f"error: {stderr[:200]}"
 
-    # Enable all crons
-    code, stdout, stderr = _run_oc(["cron", "list", "--json", "--all"], timeout=15)
-    if code == 0:
-        try:
-            data = json.loads(stdout)
-            for cron in data.get("items", []):
-                if not cron.get("enabled"):
-                    cid = cron["id"]
-                    _run_oc(["cron", "enable", cid], timeout=10)
-                    results["crons_enabled"].append(cron.get("name", cid))
-        except json.JSONDecodeError:
-            results["crons_error"] = "Failed to parse cron list"
+        code, stdout, stderr = _run_oc(["cron", "list", "--json", "--all"], timeout=15)
+        if code == 0:
+            try:
+                data = json.loads(stdout)
+                for cron in data.get("items", []):
+                    if not cron.get("enabled"):
+                        cid = cron["id"]
+                        _run_oc(["cron", "enable", cid], timeout=10)
+                        results["crons_enabled"].append(cron.get("name", cid))
+            except json.JSONDecodeError:
+                results["crons_error"] = "Failed to parse cron list"
 
-    return results
+        return results
+
+    # Otherwise, queue command for remote execution
+    return _queue_system_command(db, user, "resume_gateway")
 
 
 @router.post("/fix")
-def system_fix(user: dict = Depends(get_current_user)):
+def system_fix(user: dict = Depends(get_current_user), db: DbSession = Depends(get_db)):
     """FIX: clear large sessions, disable crons, report spending."""
-    if not _openclaw_available():
-        return {"error": "OpenClaw not configured"}
     if not user.get("full_access") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="Owner only")
+
+    # If OpenClaw not available locally, queue for remote execution
+    if not _openclaw_available():
+        return _queue_system_command(db, user, "fix_system")
 
     results = {
         "cleared_sessions": [],
         "paused_crons": [],
         "spending_last_hour": {},
+        "executed": True,
     }
 
     # 1. Find and delete large session JSONL files (>500KB)

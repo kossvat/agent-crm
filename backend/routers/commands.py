@@ -174,6 +174,34 @@ def _notify_command_result(db: Session, cmd: PendingCommand, status: str, error:
         logger.warning(f"Failed to send command notification: {e}")
 
 
+_SYSTEM_CMD_MESSAGES = {
+    "stop_gateway": "⏹ Gateway stopped and all crons disabled",
+    "resume_gateway": "▶ Gateway started and all crons enabled",
+    "fix_system": "🔧 System fix applied: sessions cleared, crons disabled",
+}
+
+
+def _notify_system_command_result(db: Session, cmd: PendingCommand, status: str, error: str | None):
+    """Send Telegram notification about system command result."""
+    try:
+        workspace = db.query(Workspace).filter(Workspace.id == cmd.workspace_id).first()
+        if not workspace:
+            return
+        owner = db.query(User).filter(User.id == workspace.owner_id).first()
+        if not owner or not owner.telegram_id:
+            return
+
+        if status == "applied":
+            text = _SYSTEM_CMD_MESSAGES.get(cmd.command_type, f"✅ {cmd.command_type} applied")
+        else:
+            action = cmd.command_type.replace("_", " ")
+            text = f"❌ Failed to {action}: {error or 'unknown error'}"
+
+        _send_telegram_notification(owner.telegram_id, text)
+    except Exception as e:
+        logger.warning(f"Failed to send system command notification: {e}")
+
+
 @router.post("/{command_id}/ack")
 def ack_command(
     command_id: int,
@@ -213,6 +241,8 @@ def ack_command(
         # Best-effort notification (after commit, don't fail the ACK)
         if cmd.command_type == "change_model":
             _notify_command_result(db, cmd, data.status, data.error)
+        elif cmd.command_type in ("stop_gateway", "resume_gateway", "fix_system"):
+            _notify_system_command_result(db, cmd, data.status, data.error)
 
         return {"ok": True}
     except HTTPException:
