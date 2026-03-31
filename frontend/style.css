@@ -1845,3 +1845,26 @@ main {
     .admin-stats-grid { grid-template-columns: repeat(2, 1fr); }
     .admin-stat-value { font-size: 22px; }
 }
+
+/* Pending command badge */
+.pending-badge {
+    font-size: 12px;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 6px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.pending-commands-info {
+    text-align: center;
+    font-size: 13px;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 10px;
+    padding: 8px 14px;
+    margin-bottom: 12px;
+}

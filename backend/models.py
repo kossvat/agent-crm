@@ -230,6 +230,20 @@ class AgentFile(Base):
     agent = relationship("Agent")
 
 
+class PendingCommand(Base):
+    """Command queue for bidirectional CRM ↔ OpenClaw sync."""
+    __tablename__ = "pending_commands"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    command_type = Column(String(50), nullable=False)  # "change_model", "restart_gateway", etc.
+    payload = Column(Text, nullable=False)  # JSON: {"agent_name": "Caramel", "model": "claude-opus-4-6"}
+    status = Column(String(20), default="pending")  # pending, applied, failed
+    created = Column(DateTime(timezone=True), default=utcnow)
+    applied_at = Column(DateTime(timezone=True), nullable=True)
+    error = Column(Text, nullable=True)
+
+
 class ConnectToken(Base):
     """Magic link token for remote agent bootstrap."""
     __tablename__ = "connect_tokens"

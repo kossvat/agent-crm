@@ -120,6 +120,22 @@ def _migrate_columns():
             """))
             conn.commit()
 
+        # Create pending_commands table if missing (SQLite — Alembic handles PostgreSQL)
+        if not inspector.has_table("pending_commands"):
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE pending_commands (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
+                    command_type VARCHAR(50) NOT NULL,
+                    payload TEXT NOT NULL,
+                    status VARCHAR(20) DEFAULT 'pending',
+                    created DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    applied_at DATETIME,
+                    error TEXT
+                )
+            """))
+            conn.commit()
+
         # Backfill workspace_id=1 for all existing rows with NULL workspace_id
         for table_name in ["agents", "tasks", "crons", "costs", "journal_entries", "alerts"]:
             if inspector.has_table(table_name):

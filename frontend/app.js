@@ -1279,10 +1279,23 @@ function initScrollDots() {
 let availableModels = [];
 
 async function renderAgents(el) {
-    [agents, availableModels] = await Promise.all([
+    let pendingCommands = [];
+    [agents, availableModels, pendingCommands] = await Promise.all([
         api('/agents'),
         api('/agents/models').catch(() => ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-35-20241022']),
+        api('/commands/pending').catch(() => []),
     ]);
+
+    // Build set of agent names with pending model changes
+    const pendingAgentNames = new Set();
+    for (const cmd of pendingCommands) {
+        if (cmd.command_type === 'change_model') {
+            try {
+                const p = typeof cmd.payload === 'string' ? JSON.parse(cmd.payload) : cmd.payload;
+                if (p.agent_name) pendingAgentNames.add(p.agent_name);
+            } catch(e) {}
+        }
+    }
 
     // Check restart status
     const restartStatus = await api('/agents/restart-status').catch(() => ({ restart_pending: false }));
@@ -1294,6 +1307,10 @@ async function renderAgents(el) {
 
     const tier = currentUser?.tier || currentWorkspace?.tier || 'hobby';
     const agentLimit = currentWorkspace?.agent_limit || 3;
+    const pendingCount = pendingCommands.length;
+    const pendingInfo = pendingCount > 0
+        ? `<div class="pending-commands-info">⏳ ${pendingCount} pending command${pendingCount > 1 ? 's' : ''} awaiting sync</div>`
+        : '';
     const limitInfo = `<div class="agent-limit-info">🤖 ${agents.length}/${agentLimit} agents (${tier.charAt(0).toUpperCase() + tier.slice(1)})</div>`;
 
     // Connect Remote Agent section (all users)
@@ -1329,7 +1346,7 @@ async function renderAgents(el) {
             </div>`;
     }
 
-    el.innerHTML = restartBanner + limitInfo + connectSection + (agents.length
+    el.innerHTML = restartBanner + pendingInfo + limitInfo + connectSection + (agents.length
         ? '<div class="agents-grid">' + agents.map(a => `<div class="card agent-card-full">
             <div class="agent-header">
                 <div class="agent-emoji">${a.emoji}</div>
@@ -1351,6 +1368,7 @@ async function renderAgents(el) {
                             ${a.model && !availableModels.includes(a.model) ? `<option value="${a.model}" selected>${a.model.split('/').pop()}</option>` : ''}
                         </select>
                         <button class="save-model-btn" id="save-model-${a.id}" style="display:none;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;" onclick="changeAgentModel(${a.id})">Save</button>
+                        <span id="pending-badge-${a.id}" class="pending-badge" style="display:${pendingAgentNames.has(a.name) ? 'inline-block' : 'none'};">⏳ pending</span>
                     </div>
                 </div>
                 <div class="agent-meta-row">
@@ -1390,10 +1408,13 @@ window.changeAgentModel = async function(agentId) {
             body: JSON.stringify({ model }),
         });
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
-        showToast('Model updated ✓', 'success');
+        showToast('Model saved — will apply on next sync ✓', 'success');
         select.dataset.original = model;
         btn && (btn.style.display = 'none');
         btn && (btn.textContent = 'Save');
+        // Show pending badge
+        const badge = document.getElementById(`pending-badge-${agentId}`);
+        if (badge) badge.style.display = 'inline-block';
     } catch (err) {
         showToast(err.message, 'error');
         btn && (btn.textContent = 'Save');

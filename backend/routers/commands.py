@@ -1,0 +1,169 @@
+"""Command queue endpoints for bidirectional CRM ↔ OpenClaw sync."""
+
+import json
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from typing import Optional
+
+from backend.database import get_db, SessionLocal
+from backend.models import PendingCommand
+from backend.auth import get_current_user, decode_workspace_token
+
+router = APIRouter(prefix="/api/commands", tags=["commands"])
+
+
+# --- Schemas ---
+
+class CommandResponse(BaseModel):
+    id: int
+    workspace_id: int
+    command_type: str
+    payload: str
+    status: str
+    created: Optional[str] = None
+    applied_at: Optional[str] = None
+    error: Optional[str] = None
+
+
+class AckRequest(BaseModel):
+    status: str  # "applied" or "failed"
+    error: Optional[str] = None
+
+
+# --- Auth helper (workspace token) ---
+
+def _get_workspace_id(request: Request) -> int:
+    """Extract workspace_id from Authorization: Bearer <workspace_token>."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing workspace token")
+    token = auth_header[7:]
+    try:
+        payload = decode_workspace_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return payload["workspace_id"]
+
+
+# --- Endpoints (workspace token auth — for sync scripts) ---
+
+@router.get("/pending", response_model=list[CommandResponse])
+def get_pending_commands(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Get pending commands for the current workspace.
+
+    Auth: JWT (frontend) or workspace token (sync script).
+    If JWT auth succeeds, uses workspace_id from JWT.
+    """
+    ws_id = user.get("workspace_id", 1)
+    db: Session = SessionLocal()
+    try:
+        commands = (
+            db.query(PendingCommand)
+            .filter(
+                PendingCommand.workspace_id == ws_id,
+                PendingCommand.status == "pending",
+            )
+            .order_by(PendingCommand.created.asc())
+            .all()
+        )
+        return [
+            CommandResponse(
+                id=cmd.id,
+                workspace_id=cmd.workspace_id,
+                command_type=cmd.command_type,
+                payload=cmd.payload,
+                status=cmd.status,
+                created=cmd.created.isoformat() if cmd.created else None,
+                applied_at=cmd.applied_at.isoformat() if cmd.applied_at else None,
+                error=cmd.error,
+            )
+            for cmd in commands
+        ]
+    finally:
+        db.close()
+
+
+@router.get("/pending/ws", response_model=list[CommandResponse])
+def get_pending_commands_ws(request: Request):
+    """Get pending commands via workspace token (for sync scripts).
+
+    Auth: workspace token only (Bearer header).
+    """
+    ws_id = _get_workspace_id(request)
+    db: Session = SessionLocal()
+    try:
+        commands = (
+            db.query(PendingCommand)
+            .filter(
+                PendingCommand.workspace_id == ws_id,
+                PendingCommand.status == "pending",
+            )
+            .order_by(PendingCommand.created.asc())
+            .all()
+        )
+        return [
+            CommandResponse(
+                id=cmd.id,
+                workspace_id=cmd.workspace_id,
+                command_type=cmd.command_type,
+                payload=cmd.payload,
+                status=cmd.status,
+                created=cmd.created.isoformat() if cmd.created else None,
+                applied_at=cmd.applied_at.isoformat() if cmd.applied_at else None,
+                error=cmd.error,
+            )
+            for cmd in commands
+        ]
+    finally:
+        db.close()
+
+
+@router.post("/{command_id}/ack")
+def ack_command(
+    command_id: int,
+    data: AckRequest,
+    request: Request,
+):
+    """Acknowledge a command (mark as applied or failed).
+
+    Auth: workspace token (Bearer header).
+    """
+    ws_id = _get_workspace_id(request)
+
+    if data.status not in ("applied", "failed"):
+        raise HTTPException(status_code=400, detail="status must be 'applied' or 'failed'")
+
+    db: Session = SessionLocal()
+    try:
+        cmd = (
+            db.query(PendingCommand)
+            .filter(
+                PendingCommand.id == command_id,
+                PendingCommand.workspace_id == ws_id,
+            )
+            .first()
+        )
+        if not cmd:
+            raise HTTPException(status_code=404, detail="Command not found")
+
+        cmd.status = data.status
+        if data.status == "applied":
+            cmd.applied_at = datetime.now(timezone.utc)
+        if data.error:
+            cmd.error = data.error
+
+        db.commit()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()

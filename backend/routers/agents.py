@@ -1,5 +1,6 @@
 """Agent CRUD endpoints."""
 
+import json
 import logging
 import os
 import time
@@ -10,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import Agent, Workspace, TIER_AGENT_LIMITS
+from backend.models import Agent, Workspace, PendingCommand, TIER_AGENT_LIMITS
 from backend.schemas import AgentResponse, AgentCreate, AgentUpdate
 from backend.auth import get_current_user
 from backend.services.openclaw import (
@@ -142,7 +143,7 @@ def update_agent(
     for key, val in update_data.items():
         setattr(agent, key, val)
 
-    # Sync model change to openclaw.json (if available)
+    # Sync model change to openclaw.json (if available locally)
     if "model" in update_data and agent.session_key:
         try:
             updated = update_agent_model(agent.session_key, update_data["model"])
@@ -150,6 +151,15 @@ def update_agent(
                 log.warning(f"Agent {agent.session_key} not found in openclaw.json")
         except Exception as e:
             log.warning(f"openclaw.json sync skipped: {e}")
+
+    # Create PendingCommand for remote sync (always, for any model change)
+    if "model" in update_data:
+        cmd = PendingCommand(
+            workspace_id=ws_id,
+            command_type="change_model",
+            payload=json.dumps({"agent_name": agent.name, "model": update_data["model"]}),
+        )
+        db.add(cmd)
 
     db.commit()
     db.refresh(agent)
