@@ -1,16 +1,21 @@
 """Command queue endpoints for bidirectional CRM ↔ OpenClaw sync."""
 
 import json
+import logging
+import os
 from datetime import datetime, timezone
 
+import requests as http_requests
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from backend.database import get_db, SessionLocal
-from backend.models import PendingCommand
+from backend.models import PendingCommand, User, Workspace
 from backend.auth import get_current_user, decode_workspace_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
 
@@ -124,6 +129,51 @@ def get_pending_commands_ws(request: Request):
         db.close()
 
 
+def _send_telegram_notification(chat_id: int, text: str):
+    """Best-effort Telegram notification via Bot API."""
+    bot_token = os.environ.get("BOT_TOKEN")
+    if not bot_token or not chat_id:
+        return
+    try:
+        http_requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
+            timeout=5,
+        )
+    except Exception as e:
+        logger.warning(f"Telegram notification failed: {e}")
+
+
+def _notify_command_result(db: Session, cmd: PendingCommand, status: str, error: str | None):
+    """Send Telegram notification to workspace owner about command result."""
+    try:
+        workspace = db.query(Workspace).filter(Workspace.id == cmd.workspace_id).first()
+        if not workspace:
+            return
+        owner = db.query(User).filter(User.id == workspace.owner_id).first()
+        if not owner or not owner.telegram_id:
+            return
+
+        # Parse payload for agent/model info
+        try:
+            payload = json.loads(cmd.payload) if isinstance(cmd.payload, str) else cmd.payload
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+
+        agent_name = payload.get("agent_name", "unknown")
+        model_name = payload.get("model", "unknown")
+
+        if status == "applied":
+            text = f"✅ Model for {agent_name} changed to {model_name}"
+        else:
+            err_msg = error or "unknown error"
+            text = f"❌ Failed to change model for {agent_name}: {err_msg}"
+
+        _send_telegram_notification(owner.telegram_id, text)
+    except Exception as e:
+        logger.warning(f"Failed to send command notification: {e}")
+
+
 @router.post("/{command_id}/ack")
 def ack_command(
     command_id: int,
@@ -159,6 +209,11 @@ def ack_command(
             cmd.error = data.error
 
         db.commit()
+
+        # Best-effort notification (after commit, don't fail the ACK)
+        if cmd.command_type == "change_model":
+            _notify_command_result(db, cmd, data.status, data.error)
+
         return {"ok": True}
     except HTTPException:
         raise

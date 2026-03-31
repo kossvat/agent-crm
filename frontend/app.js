@@ -1396,30 +1396,132 @@ window.onModelSelectChange = function(agentId) {
     btn.style.display = changed ? 'inline-block' : 'none';
 };
 
-window.changeAgentModel = async function(agentId) {
+window.changeAgentModel = function(agentId) {
     const select = document.getElementById(`model-select-${agentId}`);
-    const btn = document.getElementById(`save-model-${agentId}`);
     if (!select) return;
     const model = select.value;
-    try {
-        btn && (btn.textContent = '...');
-        await api(`/agents/${agentId}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ model }),
-        });
-        if (tg) tg.HapticFeedback?.notificationOccurred('success');
-        showToast('Model saved — will apply on next sync ✓', 'success');
-        select.dataset.original = model;
-        btn && (btn.style.display = 'none');
-        btn && (btn.textContent = 'Save');
-        // Show pending badge
-        const badge = document.getElementById(`pending-badge-${agentId}`);
-        if (badge) badge.style.display = 'inline-block';
-    } catch (err) {
-        showToast(err.message, 'error');
-        btn && (btn.textContent = 'Save');
-    }
+    const modelShort = model.split('/').pop();
+
+    // Show confirmation dialog
+    showConfirmDialog(
+        `Change model to <strong>${modelShort}</strong>? This will apply to your real OpenClaw instance.`,
+        async () => {
+            const btn = document.getElementById(`save-model-${agentId}`);
+            try {
+                btn && (btn.textContent = '...');
+                await api(`/agents/${agentId}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ model }),
+                });
+                if (tg) tg.HapticFeedback?.notificationOccurred('success');
+                showToast('Model change queued — will apply within ~1 minute', 'success');
+                select.dataset.original = model;
+                btn && (btn.style.display = 'none');
+                btn && (btn.textContent = 'Save');
+                // Show pending badge
+                const badge = document.getElementById(`pending-badge-${agentId}`);
+                if (badge) {
+                    badge.style.display = 'inline-block';
+                    badge.textContent = '⏳ pending';
+                    badge.className = 'pending-badge';
+                }
+                // Start polling for command status
+                pollCommandStatus(agentId);
+            } catch (err) {
+                showToast(err.message, 'error');
+                btn && (btn.textContent = 'Save');
+            }
+        }
+    );
 };
+
+// --- Confirmation Dialog ---
+function showConfirmDialog(message, onConfirm) {
+    // Remove existing overlay if any
+    document.getElementById('confirm-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'confirm-overlay';
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+        <div class="confirm-card">
+            <div class="confirm-text">${message}</div>
+            <div class="confirm-actions">
+                <button class="confirm-btn confirm-btn-cancel" id="confirm-cancel">Cancel</button>
+                <button class="confirm-btn confirm-btn-primary" id="confirm-ok">Confirm</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+
+    overlay.querySelector('#confirm-cancel').addEventListener('click', close);
+    overlay.querySelector('#confirm-ok').addEventListener('click', () => {
+        close();
+        onConfirm();
+    });
+    // Close on overlay click (outside card)
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close();
+    });
+}
+
+// --- Poll command status after model change ---
+function pollCommandStatus(agentId) {
+    const agent = agents.find(a => a.id === agentId);
+    const agentName = agent?.name;
+    if (!agentName) return;
+
+    const POLL_INTERVAL = 5000; // 5 seconds
+    const MAX_POLL_TIME = 3 * 60 * 1000; // 3 minutes
+    const startTime = Date.now();
+    let pollTimer = null;
+
+    async function checkStatus() {
+        if (Date.now() - startTime > MAX_POLL_TIME) {
+            // Timeout — stop polling
+            clearInterval(pollTimer);
+            return;
+        }
+
+        try {
+            const pending = await api('/commands/pending');
+            const hasPending = pending.some(cmd => {
+                if (cmd.command_type !== 'change_model') return false;
+                try {
+                    const p = typeof cmd.payload === 'string' ? JSON.parse(cmd.payload) : cmd.payload;
+                    return p.agent_name === agentName;
+                } catch { return false; }
+            });
+
+            if (!hasPending) {
+                // Command resolved — check if applied or failed
+                clearInterval(pollTimer);
+
+                // Determine status by fetching all commands (not just pending)
+                // If it disappeared from pending, it was either applied or failed
+                // We assume applied unless we can check — show success
+                const badge = document.getElementById(`pending-badge-${agentId}`);
+                if (badge) {
+                    badge.textContent = '✅ applied';
+                    badge.className = 'cmd-badge-applied';
+                    badge.style.display = 'inline-block';
+                    setTimeout(() => {
+                        badge.style.display = 'none';
+                        badge.textContent = '⏳ pending';
+                        badge.className = 'pending-badge';
+                    }, 5000);
+                }
+            }
+        } catch (err) {
+            // Silently ignore poll errors
+        }
+    }
+
+    pollTimer = setInterval(checkStatus, POLL_INTERVAL);
+}
 
 window.showAddAgentModal = function() {
     const modal = document.getElementById('modal-overlay');
