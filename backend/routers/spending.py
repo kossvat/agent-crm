@@ -1,17 +1,21 @@
 """Spending data endpoints — reads from spending.db (read-only).
 
 Uses 5-hour rolling window to match Anthropic's rate limit system.
+
+Fallback: when spending.db is not available (production), reads from CRM's
+`costs` table in PostgreSQL, filtered by the current user's workspace_id.
 """
 
 import os
 import sqlite3
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, date as date_type, timezone, timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy import func, cast, String
 
 from backend.auth import get_current_user
 from backend.database import get_db
-from backend.models import Workspace
+from backend.models import Workspace, Cost, Agent
 from backend.plan_limits import get_plan_by_budget
 
 router = APIRouter(prefix="/api/spending", tags=["spending"])
@@ -25,6 +29,129 @@ def _get_conn():
     if not os.path.exists(SPENDING_DB):
         return None
     return sqlite3.connect(SPENDING_DB)
+
+
+# ---------------------------------------------------------------------------
+# CRM costs table helpers (fallback when spending.db is unavailable)
+# ---------------------------------------------------------------------------
+
+def _costs_current(ws_id: int, db: DBSession) -> dict:
+    """Build /current response from CRM costs table."""
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    month_start = today.replace(day=1)
+
+    # Today total
+    today_total = (
+        db.query(func.coalesce(func.sum(Cost.cost_usd), 0))
+        .filter(Cost.workspace_id == ws_id, Cost.date == today)
+        .scalar()
+    )
+    # Month total
+    month_total = (
+        db.query(func.coalesce(func.sum(Cost.cost_usd), 0))
+        .filter(Cost.workspace_id == ws_id, Cost.date >= month_start)
+        .scalar()
+    )
+    # Per-agent today
+    agent_rows = (
+        db.query(
+            Agent.name,
+            func.sum(Cost.cost_usd),
+            func.sum(Cost.input_tokens + Cost.output_tokens),
+        )
+        .join(Agent, Agent.id == Cost.agent_id)
+        .filter(Cost.workspace_id == ws_id, Cost.date == today)
+        .group_by(Agent.name)
+        .order_by(func.sum(Cost.cost_usd).desc())
+        .all()
+    )
+    agents = [
+        {"agent": name, "cost": round(float(cost or 0), 2), "messages": int(tokens or 0)}
+        for name, cost, tokens in agent_rows
+    ]
+    return {
+        "today": round(float(today_total), 2),
+        "month": round(float(month_total), 2),
+        "agents": agents,
+    }
+
+
+def _costs_timeline(ws_id: int, db: DBSession, range_: str, agent_filter: str | None) -> dict:
+    """Build /timeline response from CRM costs table."""
+    days = {"day": 1, "week": 7, "month": 30}.get(range_, 7)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date()
+
+    q = db.query(Cost.date, func.sum(Cost.cost_usd)).filter(
+        Cost.workspace_id == ws_id, Cost.date >= cutoff
+    )
+    if agent_filter:
+        q = q.join(Agent, Agent.id == Cost.agent_id).filter(Agent.name == agent_filter)
+    rows = q.group_by(Cost.date).order_by(Cost.date).all()
+
+    labels = [str(r[0]) for r in rows]
+    data = [round(float(r[1] or 0), 2) for r in rows]
+    return {"labels": labels, "data": data, "range": range_}
+
+
+def _costs_sessions(ws_id: int, db: DBSession) -> list:
+    """Build /sessions response from CRM costs table (group by agent + date)."""
+    today = datetime.now(timezone.utc).date()
+    rows = (
+        db.query(
+            Agent.name,
+            Cost.date,
+            func.sum(Cost.cost_usd),
+            func.sum(Cost.input_tokens + Cost.output_tokens),
+        )
+        .join(Agent, Agent.id == Cost.agent_id)
+        .filter(Cost.workspace_id == ws_id, Cost.date == today)
+        .group_by(Agent.name, Cost.date)
+        .order_by(func.sum(Cost.cost_usd).desc())
+        .limit(20)
+        .all()
+    )
+    return [
+        {
+            "session_id": f"{name}-{str(d)}",
+            "agent": name or "unknown",
+            "cost": round(float(cost or 0), 2),
+            "messages": int(tokens or 0),
+            "last_active": str(d),
+        }
+        for name, d, cost, tokens in rows
+    ]
+
+
+def _costs_models_timeline(ws_id: int, db: DBSession, range_: str) -> dict:
+    """Build /models-timeline response from CRM costs table."""
+    days = 7 if range_ == "week" else 30
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date()
+
+    rows = (
+        db.query(Cost.date, Cost.model, func.sum(Cost.cost_usd))
+        .filter(Cost.workspace_id == ws_id, Cost.date >= cutoff)
+        .group_by(Cost.date, Cost.model)
+        .order_by(Cost.date)
+        .all()
+    )
+    all_dates = sorted(set(str(r[0]) for r in rows))
+    all_models = sorted(set((r[1] or "unknown") for r in rows))
+
+    model_data = {m: {} for m in all_models}
+    for d, model, cost in rows:
+        resolved = model if model else "unknown"
+        model_data[resolved][str(d)] = round(float(cost or 0), 2)
+
+    datasets = {}
+    for m in all_models:
+        datasets[m] = [model_data[m].get(d, 0) for d in all_dates]
+
+    return {
+        "models": all_models,
+        "labels": [d[5:] for d in all_dates],
+        "datasets": datasets,
+    }
 
 
 def _get_budget(user: dict, db: DBSession) -> float:
@@ -122,12 +249,14 @@ def spending_current(
 
     conn = _get_conn()
     if not conn:
+        # Fallback: read from CRM costs table
+        crm = _costs_current(user.get("workspace_id", 1), db)
         empty = {"used": 0, "limit": 0, "pct": 0, "models": []}
         return {
-            "today": 0, "month": 0, "plan": plan["name"],
+            "today": crm["today"], "month": crm["month"], "plan": plan["name"],
             "weekly": {**empty, "limit": weekly_cost_limit, "resets_in_minutes": 0},
             "session": {**empty, "limit": session_cost_limit, "resets_in_minutes": 0},
-            "agents": [],
+            "agents": crm["agents"],
         }
 
     now = datetime.now(timezone.utc)
@@ -251,11 +380,12 @@ def spending_current(
 def spending_models_timeline(
     range: str = Query("week", pattern="^(week|month)$"),
     user: dict = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
 ):
     """Per-model daily costs for chart rendering."""
     conn = _get_conn()
     if not conn:
-        return {"models": [], "labels": [], "datasets": {}}
+        return _costs_models_timeline(user.get("workspace_id", 1), db, range)
 
     days = 7 if range == "week" else 30
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -294,11 +424,12 @@ def spending_timeline(
     range: str = Query("week", pattern="^(day|week|month)$"),
     agent: str = Query(None),
     user: dict = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
 ):
     """Timeline data for charts. day=hourly, week/month=daily. Optional agent filter."""
     conn = _get_conn()
     if not conn:
-        return {"labels": [], "data": [], "range": range}
+        return _costs_timeline(user.get("workspace_id", 1), db, range, agent)
 
     if range == "day":
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
@@ -339,11 +470,14 @@ def spending_timeline(
 
 
 @router.get("/sessions")
-def spending_sessions(user: dict = Depends(get_current_user)):
+def spending_sessions(
+    user: dict = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
     """Today's sessions grouped by agent + session_id, ordered by cost."""
     conn = _get_conn()
     if not conn:
-        return []
+        return _costs_sessions(user.get("workspace_id", 1), db)
 
     today_start = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00")
     rows = conn.execute("""
