@@ -104,6 +104,22 @@ def _migrate_columns():
                 ))
                 conn.commit()
 
+        # Create agent_files table if missing (SQLite — Alembic handles PostgreSQL)
+        if not inspector.has_table("agent_files"):
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE agent_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    agent_id INTEGER NOT NULL REFERENCES agents(id),
+                    filename VARCHAR(255) NOT NULL,
+                    content TEXT DEFAULT '',
+                    size INTEGER DEFAULT 0,
+                    workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
+                    updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(agent_id, filename, workspace_id)
+                )
+            """))
+            conn.commit()
+
         # Backfill workspace_id=1 for all existing rows with NULL workspace_id
         for table_name in ["agents", "tasks", "crons", "costs", "journal_entries", "alerts"]:
             if inspector.has_table(table_name):

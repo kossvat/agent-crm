@@ -4,7 +4,7 @@ import enum
 from datetime import datetime, date, timezone
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean, DateTime, Date,
-    ForeignKey, Enum as SAEnum,
+    ForeignKey, Enum as SAEnum, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from backend.database import Base
@@ -210,6 +210,24 @@ class InviteCode(Base):
     note = Column(String(255), default="")  # e.g. "for Discord giveaway"
     created = Column(DateTime(timezone=True), default=utcnow)
     expires = Column(DateTime(timezone=True), nullable=True)
+
+
+class AgentFile(Base):
+    """Stored agent files (SOUL.md, IDENTITY.md, etc.) for prod environments without local filesystem."""
+    __tablename__ = "agent_files"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "filename", "workspace_id", name="uq_agent_file_workspace"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False)
+    filename = Column(String(255), nullable=False)  # e.g. "SOUL.md"
+    content = Column(Text, default="")
+    size = Column(Integer, default=0)  # bytes
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    updated = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    agent = relationship("Agent")
 
 
 class ConnectToken(Base):
