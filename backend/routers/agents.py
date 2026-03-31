@@ -37,19 +37,19 @@ def list_agents(
     ws_id = user.get("workspace_id", 1)
     agents = db.query(Agent).filter(Agent.workspace_id == ws_id).order_by(Agent.name).all()
 
-    # Sync models from openclaw.json → DB
+    # Sync models from openclaw.json → DB (only when file exists)
     try:
         config_models = get_config_agent_models()
-        for agent in agents:
-            if agent.session_key and agent.session_key in config_models:
-                config_model = config_models[agent.session_key]
-                if config_model and agent.model != config_model:
-                    agent.model = config_model
-                    log.info(f"Synced model for {agent.name}: {config_model}")
-        db.commit()
+        if config_models:
+            for agent in agents:
+                if agent.session_key and agent.session_key in config_models:
+                    config_model = config_models[agent.session_key]
+                    if config_model and agent.model != config_model:
+                        agent.model = config_model
+                        log.info(f"Synced model for {agent.name}: {config_model}")
+            db.commit()
     except Exception as e:
         log.warning(f"Failed to sync models from config: {e}")
-        db.rollback()
 
     return agents
 
@@ -142,18 +142,14 @@ def update_agent(
     for key, val in update_data.items():
         setattr(agent, key, val)
 
-    # Sync model change to openclaw.json
+    # Sync model change to openclaw.json (if available)
     if "model" in update_data and agent.session_key:
         try:
             updated = update_agent_model(agent.session_key, update_data["model"])
             if not updated:
                 log.warning(f"Agent {agent.session_key} not found in openclaw.json")
         except Exception as e:
-            log.error(f"Failed to update openclaw.json: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"DB updated but config write failed: {e}",
-            )
+            log.warning(f"openclaw.json sync skipped: {e}")
 
     db.commit()
     db.refresh(agent)
