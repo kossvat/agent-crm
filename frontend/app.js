@@ -1610,8 +1610,7 @@ window.generateConnectLink = async function() {
 
 window.copySetupMessage = async function() {
     try {
-        const token = localStorage.getItem('workspace_token') || '';
-        const data = await api(`/setup/message?token=${token}`);
+        const data = await api(`/setup/message`);
         await navigator.clipboard.writeText(data.message);
         showToast('Setup message copied! Send it to your agent.', 'success');
     } catch (err) {

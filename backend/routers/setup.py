@@ -7,10 +7,10 @@ import os
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from backend.auth import decode_workspace_token
+from backend.auth import create_workspace_token, decode_workspace_token, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +76,20 @@ async def download_skill_zip(request: Request, token: str = Query(..., descripti
 
 
 @router.get("/message")
-async def get_setup_message(request: Request, token: str = Query(..., description="Workspace token")):
-    """Get the ready-to-copy setup message for the agent."""
-    _validate_token(token)
+async def get_setup_message(
+    request: Request,
+    token: str = Query(None, description="Workspace token (optional if JWT auth)"),
+    user: dict = Depends(get_current_user),
+):
+    """Get the ready-to-copy setup message for the agent.
+    Can use either workspace_token query param or JWT auth.
+    """
+    if not token:
+        # Generate a fresh workspace token from JWT user context
+        ws_id = user.get("workspace_id", 1)
+        token = create_workspace_token(ws_id, days=30)
+    else:
+        _validate_token(token)
     base_url = _get_base_url(request)
 
     skill_url = f"{base_url}/api/setup/skill?token={token}"
