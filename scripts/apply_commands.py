@@ -105,6 +105,9 @@ def apply_model_change(agent_name: str, model: str, config_path: Path) -> tuple[
         if agent.get("id") == agent_id:
             if "model" not in agent:
                 agent["model"] = {}
+            # Ensure model has provider prefix (openclaw.json requires it)
+            if "/" not in model:
+                model = f"anthropic/{model}"
             agent["model"]["primary"] = model
             found = True
             break
