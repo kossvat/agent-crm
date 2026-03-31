@@ -1348,6 +1348,12 @@ async function renderAgents(el) {
                 </div>
                 <div id="connect-result" class="connect-result hidden"></div>
                 <div class="connect-pending">${pendingHtml}</div>
+            </div>
+            <div class="card">
+                <div class="card-title">🎮 Remote Control</div>
+                <p style="color:var(--text-dim);font-size:13px;">Enable model changes and system controls from this dashboard.</p>
+                <button class="btn-primary" onclick="copySetupMessage()">📋 Copy Setup Message</button>
+                <p style="color:var(--text-dim);font-size:12px;margin-top:8px;">Send the copied message to your AI agent to set up sync.</p>
             </div>`;
     }
 
@@ -1474,14 +1480,22 @@ function pollCommandStatus(agentId) {
 
     const POLL_INTERVAL = 5000; // 5 seconds
     const MAX_POLL_TIME = 3 * 60 * 1000; // 3 minutes
+    const HINT_TIME = 2 * 60 * 1000; // 2 minutes
     const startTime = Date.now();
     let pollTimer = null;
+    let hintShown = false;
 
     async function checkStatus() {
         if (Date.now() - startTime > MAX_POLL_TIME) {
             // Timeout — stop polling
             clearInterval(pollTimer);
             return;
+        }
+
+        // Show hint after 2 minutes of waiting
+        if (!hintShown && Date.now() - startTime > HINT_TIME) {
+            hintShown = true;
+            showToast("Command still pending. If you haven't set up sync yet, copy the setup message from the Agents page → Remote Control section.", 'info', { duration: 10000 });
         }
 
         try {
@@ -1589,6 +1603,17 @@ window.generateConnectLink = async function() {
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
     } catch (err) {
         resultEl.innerHTML = `<span class="connect-error">❌ ${err.message}</span>`;
+    }
+};
+
+window.copySetupMessage = async function() {
+    try {
+        const token = localStorage.getItem('workspace_token') || '';
+        const data = await api(`/setup/message?token=${token}`);
+        await navigator.clipboard.writeText(data.message);
+        showToast('Setup message copied! Send it to your agent.', 'success');
+    } catch (err) {
+        showToast('Failed to copy: ' + err.message, 'error');
     }
 };
 

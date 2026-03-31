@@ -5,11 +5,12 @@ Apply pending CRM commands to the local OpenClaw instance.
 Polls the CRM API for pending commands, applies them (e.g. model changes
 to openclaw.json), and acknowledges completion.
 
-Usage:
-    python3 scripts/apply_commands.py --url https://myaiagentscrm.com --token TOKEN
+Configuration:
+    Reads from config.json in the same directory (auto-generated during setup).
+    Falls back to CLI args if config.json is not found.
 
-Cron setup (hourly, alongside sync_spending):
-    0 * * * * python3 /path/to/apply_commands.py --url https://myaiagentscrm.com --token YOUR_TOKEN
+Cron setup (every minute):
+    * * * * * cd ~/.openclaw/skills/agentcrm-sync && python3 apply_commands.py >> /tmp/agentcrm-sync.log 2>&1
 """
 
 import argparse
@@ -32,6 +33,18 @@ AGENT_CONFIG_MAP = {
     "Vibe": "social",
     "Mira": "mira",
 }
+
+
+def load_config() -> dict | None:
+    """Load config from config.json in the same directory as this script."""
+    config_path = Path(__file__).parent / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"Warning: failed to read config.json: {e}", file=sys.stderr)
+    return None
 
 
 def api_get(url: str, token: str, path: str) -> list | dict:
@@ -94,12 +107,8 @@ def apply_model_change(agent_name: str, model: str, config_path: Path) -> tuple[
     if not agent_id:
         return False, f"Unknown agent name: {agent_name} (not in AGENT_CONFIG_MAP)"
 
-    # Find agent in config.agents.list array (or config.agents if it's a list)
-    agents_section = config.get("agents", {})
-    if isinstance(agents_section, list):
-        agents = agents_section
-    else:
-        agents = agents_section.get("list", [])
+    # Find agent in config.agents array
+    agents = config.get("agents", [])
     found = False
     for agent in agents:
         if agent.get("id") == agent_id:
@@ -213,37 +222,9 @@ def handle_fix_system() -> tuple[bool, str]:
     return True, "; ".join(results)
 
 
-def restart_gateway() -> tuple[bool, str]:
-    """Restart OpenClaw gateway."""
-    try:
-        result = subprocess.run(
-            ["openclaw", "gateway", "restart"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            return True, "Gateway restarted successfully"
-        else:
-            return False, f"Gateway restart failed: {result.stderr or result.stdout}"
-    except FileNotFoundError:
-        return False, "openclaw CLI not found in PATH"
-    except subprocess.TimeoutExpired:
-        return False, "Gateway restart timed out"
-    except Exception as e:
-        return False, f"Gateway restart error: {e}"
-
-
 def main():
-    # Try config.json first (used when installed as a skill)
-    config_path = Path(__file__).parent / "config.json"
-    file_config = None
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                file_config = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            print(f"Warning: failed to read config.json: {e}", file=sys.stderr)
+    # Try config.json first
+    file_config = load_config()
 
     parser = argparse.ArgumentParser(description="Apply pending CRM commands to OpenClaw")
     parser.add_argument("--url", default=file_config.get("url") if file_config else None, help="CRM base URL")
@@ -323,7 +304,6 @@ def main():
             )
 
     # 3. Model changes auto-apply via OpenClaw hot reload (hybrid mode)
-    # No gateway restart needed — just writing openclaw.json is enough
     if applied_any_model:
         print("Model changes written to openclaw.json — hot reload will apply automatically.")
 
