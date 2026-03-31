@@ -41,9 +41,21 @@ def _check_gateway() -> dict:
         return {"running": False, "pids": []}
 
 
+def _openclaw_available() -> bool:
+    """Check if OpenClaw binary exists and is executable."""
+    return os.path.isfile(OPENCLAW_BIN) and os.access(OPENCLAW_BIN, os.X_OK)
+
+
 @router.get("/status")
 def system_status(user: dict = Depends(get_current_user)):
     """System status: gateway running, cron count, etc."""
+    if not _openclaw_available():
+        return {
+            "status": "not_configured",
+            "gateway": False,
+            "message": "OpenClaw not connected",
+        }
+
     gw = _check_gateway()
 
     return {
@@ -55,6 +67,8 @@ def system_status(user: dict = Depends(get_current_user)):
 @router.post("/stop")
 def system_stop(user: dict = Depends(get_current_user)):
     """STOP: stop gateway + disable all crons. Owner only."""
+    if not _openclaw_available():
+        return {"error": "OpenClaw not configured"}
     if not user.get("full_access") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="Owner only")
 
@@ -83,6 +97,8 @@ def system_stop(user: dict = Depends(get_current_user)):
 @router.post("/resume")
 def system_resume(user: dict = Depends(get_current_user)):
     """RESUME: start gateway + enable all crons. Owner only."""
+    if not _openclaw_available():
+        return {"error": "OpenClaw not configured"}
     if not user.get("full_access") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="Owner only")
 
@@ -111,6 +127,8 @@ def system_resume(user: dict = Depends(get_current_user)):
 @router.post("/fix")
 def system_fix(user: dict = Depends(get_current_user)):
     """FIX: clear large sessions, disable crons, report spending."""
+    if not _openclaw_available():
+        return {"error": "OpenClaw not configured"}
     if not user.get("full_access") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="Owner only")
 

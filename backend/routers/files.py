@@ -18,9 +18,13 @@ AGENT_FILES = {
 @router.get("")
 def list_files(user: dict = Depends(get_current_user)):
     """List all viewable files grouped by agent."""
+    openclaw_path = Path(OPENCLAW_DIR)
+    if not openclaw_path.exists():
+        return []
+
     result = []
     for agent_name, cfg in AGENT_FILES.items():
-        ws_dir = Path(OPENCLAW_DIR) / cfg["workspace"]
+        ws_dir = openclaw_path / cfg["workspace"]
         for filename in cfg["files"]:
             filepath = ws_dir / filename
             result.append({
@@ -35,6 +39,13 @@ def list_files(user: dict = Depends(get_current_user)):
 @router.get("/{agent}/{filename}")
 def read_file(agent: str, filename: str, user: dict = Depends(get_current_user)):
     """Read a whitelisted file (markdown content)."""
+    openclaw_path = Path(OPENCLAW_DIR)
+    if not openclaw_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Agent files not available — connect OpenClaw to view",
+        )
+
     cfg = AGENT_FILES.get(agent)
     if not cfg:
         raise HTTPException(status_code=404, detail=f"Agent '{agent}' not found")
@@ -42,7 +53,7 @@ def read_file(agent: str, filename: str, user: dict = Depends(get_current_user))
     if filename not in cfg["files"]:
         raise HTTPException(status_code=403, detail=f"File '{filename}' not in whitelist")
 
-    filepath = Path(OPENCLAW_DIR) / cfg["workspace"] / filename
+    filepath = openclaw_path / cfg["workspace"] / filename
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"File not found")
 

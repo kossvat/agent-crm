@@ -865,7 +865,7 @@ async function renderDashboard(el) {
         </div>`;
     }).join('');
 
-    const hasOpenClaw = sysStatus.gateway === true;
+    const hasOpenClaw = sysStatus.gateway === true && sysStatus.status !== 'not_configured';
 
     el.innerHTML = `
         ${hasOpenClaw ? `<div class="system-bar">
@@ -919,10 +919,11 @@ async function renderDashboard(el) {
                 <div class="summary-label">Alerts</div>
             </div>
         </div>
+        ${hasOpenClaw || dailyTimeline.labels.length ? `
         <div class="section-header">Today (hourly)</div>
         <div class="chart-container"><canvas id="dash-daily-chart"></canvas></div>
         <div class="section-header">This Week (daily)</div>
-        <div class="chart-container"><canvas id="dash-weekly-chart"></canvas></div>
+        <div class="chart-container"><canvas id="dash-weekly-chart"></canvas></div>` : ''}
         ${sessions.length ? `
         <div class="section-header">Sessions</div>
         <div class="sessions-list">
@@ -1499,7 +1500,7 @@ async function renderAlerts(el) {
     const awPct = Math.min(100, aw.pct || 0).toFixed(1);
     const asPct = Math.min(100, as2.pct || 0).toFixed(1);
 
-    const alertHasOpenClaw = sysStatus.gateway === true;
+    const alertHasOpenClaw = sysStatus.gateway === true && sysStatus.status !== 'not_configured';
 
     el.innerHTML = `
         ${alertHasOpenClaw ? `<div class="system-bar">
@@ -1524,10 +1525,13 @@ async function renderAlerts(el) {
                 <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>
             </div>
         </div>` : ''}
+        ${alertHasOpenClaw || dailyTimeline.labels.length ? `
         <div class="section-header">Today (hourly)</div>
         <div class="chart-container"><canvas id="alerts-daily-chart"></canvas></div>
         <div class="section-header">Spending (7 days)</div>
-        <div class="chart-container"><canvas id="spending-chart"></canvas></div>
+        <div class="chart-container"><canvas id="spending-chart"></canvas></div>` : `
+        ${sysStatus.status === 'not_configured' ? '<div class="empty-state" style="margin:16px 0"><div class="empty-icon">⚙️</div><p>System monitoring available when OpenClaw is connected.</p></div>' : ''}
+        `}
         <div class="section-header">Alerts</div>
         ${alerts.length
             ? alerts.map(a => alertCardHTML(a)).join('')
@@ -1902,6 +1906,15 @@ async function renderFiles(el) {
         files = await api('/files');
     } catch (err) {
         el.innerHTML = `<div class="empty-state"><p>Failed to load files</p></div>`;
+        return;
+    }
+
+    if (!files || files.length === 0) {
+        el.innerHTML = `<div class="empty-state">
+            <div class="empty-icon">📁</div>
+            <p>No agent files available</p>
+            <p style="font-size:13px;color:var(--text-hint);margin-top:4px;">Connect OpenClaw to view agent workspaces.</p>
+        </div>`;
         return;
     }
 
