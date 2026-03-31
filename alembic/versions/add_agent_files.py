@@ -1,14 +1,14 @@
 """Add agent_files table for DB-backed file storage.
 
 Revision ID: add_agent_files
-Revises: add_superadmin
+Revises: b3c4d5e6f7a8
 Create Date: 2026-03-31
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "add_agent_files"
-down_revision = "add_superadmin"
+down_revision = "b3c4d5e6f7a8"
 branch_labels = None
 depends_on = None
 
