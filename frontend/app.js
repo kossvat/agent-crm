@@ -1349,12 +1349,12 @@ async function renderAgents(el) {
                 <div id="connect-result" class="connect-result hidden"></div>
                 <div class="connect-pending">${pendingHtml}</div>
             </div>
-            <div class="card">
+            ${!localStorage.getItem('workspace_token') ? `<div class="card">
                 <div class="card-title">🎮 Remote Control</div>
                 <p style="color:var(--text-dim);font-size:13px;">Enable model changes and system controls from this dashboard.</p>
                 <button class="btn-primary" onclick="copySetupMessage()">📋 Copy Setup Message</button>
                 <p style="color:var(--text-dim);font-size:12px;margin-top:8px;">Send the copied message to your AI agent to set up sync.</p>
-            </div>`;
+            </div>` : ''}`;
     }
 
     el.innerHTML = restartBanner + pendingInfo + limitInfo + connectSection + (agents.length
