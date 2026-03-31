@@ -70,10 +70,20 @@ def get_records(db_path: Path, days: int, last_sync: str | None) -> list[dict]:
     rows = conn.execute(query, params).fetchall()
     conn.close()
 
+    # Map spending.db agent names → CRM agent names
+    AGENT_NAME_MAP = {
+        "main": "Caramel",
+        "sixteen": "Sixteen",
+        "career": "Rex",
+        "social": "Vibe",
+        "vibe": "Vibe",
+    }
+
     records = []
     for agent, date, model, input_t, output_t, cost in rows:
+        mapped_name = AGENT_NAME_MAP.get(agent, agent) if agent else "unknown"
         records.append({
-            "agent_name": agent or "unknown",
+            "agent_name": mapped_name,
             "model": model or "unknown",
             "input_tokens": int(input_t or 0),
             "output_tokens": int(output_t or 0),

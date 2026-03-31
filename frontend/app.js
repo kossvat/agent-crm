@@ -1345,10 +1345,13 @@ async function renderAgents(el) {
             <div class="agent-details">
                 <div class="agent-detail">
                     <label>Model</label>
-                    <select class="agent-model-select" data-agent-id="${a.id}" onchange="changeAgentModel(${a.id}, this.value)">
-                        ${availableModels.map(m => `<option value="${m}" ${a.model === m ? 'selected' : ''}>${m.split('/').pop()}</option>`).join('')}
-                        ${a.model && !availableModels.includes(a.model) ? `<option value="${a.model}" selected>${a.model.split('/').pop()}</option>` : ''}
-                    </select>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <select class="agent-model-select" id="model-select-${a.id}" data-agent-id="${a.id}" data-original="${a.model || ''}" onchange="onModelSelectChange(${a.id})">
+                            ${availableModels.map(m => `<option value="${m}" ${a.model === m ? 'selected' : ''}>${m.split('/').pop()}</option>`).join('')}
+                            ${a.model && !availableModels.includes(a.model) ? `<option value="${a.model}" selected>${a.model.split('/').pop()}</option>` : ''}
+                        </select>
+                        <button class="save-model-btn" id="save-model-${a.id}" style="display:none;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;" onclick="changeAgentModel(${a.id})">Save</button>
+                    </div>
                 </div>
                 <div class="agent-meta-row">
                     <span>Last active: ${a.last_active ? timeAgo(a.last_active) : 'never'}</span>
@@ -1367,17 +1370,33 @@ async function renderAgents(el) {
         </div>`);
 }
 
-window.changeAgentModel = async function(agentId, model) {
+window.onModelSelectChange = function(agentId) {
+    const select = document.getElementById(`model-select-${agentId}`);
+    const btn = document.getElementById(`save-model-${agentId}`);
+    if (!select || !btn) return;
+    const changed = select.value !== select.dataset.original;
+    btn.style.display = changed ? 'inline-block' : 'none';
+};
+
+window.changeAgentModel = async function(agentId) {
+    const select = document.getElementById(`model-select-${agentId}`);
+    const btn = document.getElementById(`save-model-${agentId}`);
+    if (!select) return;
+    const model = select.value;
     try {
+        btn && (btn.textContent = '...');
         await api(`/agents/${agentId}`, {
             method: 'PATCH',
             body: JSON.stringify({ model }),
         });
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
-        render(); // Re-render to show restart banner
+        showToast('Model updated ✓', 'success');
+        select.dataset.original = model;
+        btn && (btn.style.display = 'none');
+        btn && (btn.textContent = 'Save');
     } catch (err) {
         showToast(err.message, 'error');
-        render();
+        btn && (btn.textContent = 'Save');
     }
 };
 
