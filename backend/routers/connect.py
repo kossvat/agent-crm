@@ -108,6 +108,24 @@ def connect_status(
     ]
 
 
+@router.get("/has-redeemed")
+def has_redeemed_tokens(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check if any connect token has been redeemed (used) for this workspace."""
+    ws_id = user.get("workspace_id", 1)
+    count = (
+        db.query(ConnectToken)
+        .filter(
+            ConnectToken.workspace_id == ws_id,
+            ConnectToken.used == True,
+        )
+        .count()
+    )
+    return {"has_redeemed": count > 0}
+
+
 @router.get("/{token}", response_model=RedeemResponse)
 def redeem_connect_token(
     token: str,

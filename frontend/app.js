@@ -1322,6 +1322,8 @@ async function renderAgents(el) {
     let connectSection = '';
     {
         const pendingTokens = await api('/connect/status').catch(() => []);
+        const redeemedData = await api('/connect/has-redeemed').catch(() => ({ has_redeemed: false }));
+        const hasRedeemed = redeemedData.has_redeemed;
         const pendingHtml = pendingTokens.length
             ? pendingTokens.map(t => {
                 const exp = new Date(t.expires);
@@ -1349,7 +1351,7 @@ async function renderAgents(el) {
                 <div id="connect-result" class="connect-result hidden"></div>
                 <div class="connect-pending">${pendingHtml}</div>
             </div>
-            ${!localStorage.getItem('workspace_token') ? `<div class="card">
+            ${!hasRedeemed ? `<div class="card">
                 <div class="card-title">🎮 Remote Control</div>
                 <p style="color:var(--text-dim);font-size:13px;">Enable model changes and system controls from this dashboard.</p>
                 <button class="btn-primary" onclick="copySetupMessage()">📋 Copy Setup Message</button>
