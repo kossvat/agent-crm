@@ -94,8 +94,12 @@ def apply_model_change(agent_name: str, model: str, config_path: Path) -> tuple[
     if not agent_id:
         return False, f"Unknown agent name: {agent_name} (not in AGENT_CONFIG_MAP)"
 
-    # Find agent in config.agents array
-    agents = config.get("agents", [])
+    # Find agent in config.agents.list array (or config.agents if it's a list)
+    agents_section = config.get("agents", {})
+    if isinstance(agents_section, list):
+        agents = agents_section
+    else:
+        agents = agents_section.get("list", [])
     found = False
     for agent in agents:
         if agent.get("id") == agent_id:
