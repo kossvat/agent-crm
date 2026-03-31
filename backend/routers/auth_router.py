@@ -126,6 +126,7 @@ def telegram_login(
             "workspace_name": workspace.name,
             "tier": workspace.tier.value if workspace.tier else "hobby",
             "onboarding_complete": user.onboarding_complete,
+            "is_superadmin": user.is_superadmin or False,
         },
     )
 
@@ -179,7 +180,11 @@ def get_me(
     workspace_id = user.get("workspace_id", 1)
 
     db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=401, detail="User not found")
     workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if not workspace:
+        raise HTTPException(status_code=401, detail="Workspace not found")
 
     return {
         "user": {
@@ -187,6 +192,7 @@ def get_me(
             "telegram_id": db_user.telegram_id if db_user else None,
             "name": db_user.name if db_user else user.get("username", ""),
             "onboarding_complete": db_user.onboarding_complete if db_user else False,
+            "is_superadmin": db_user.is_superadmin if db_user else False,
         },
         "workspace": {
             "id": workspace.id if workspace else workspace_id,

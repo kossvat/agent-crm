@@ -98,9 +98,109 @@ const CATEGORIES = [
 ];
 let periodFilter = localStorage.getItem('crm_period') || 'all';
 let refreshTimer = null;
+let isDemoMode = false;
+
+// --- Demo Mode Data ---
+const DEMO_AGENTS = [
+    { id: 101, name: 'Content Writer', emoji: '✍️', model: 'claude-sonnet-4-6', status: 'active', role: 'Content', bio: 'Writes blog posts and social media content', daily_cost: 2.5, last_active: new Date().toISOString() },
+    { id: 102, name: 'Code Reviewer', emoji: '🔍', model: 'claude-opus-4-6', status: 'idle', role: 'Engineering', bio: 'Reviews PRs and suggests improvements', daily_cost: 4.0, last_active: new Date(Date.now() - 3600000).toISOString() },
+    { id: 103, name: 'Data Analyst', emoji: '📊', model: 'claude-sonnet-4-6', status: 'active', role: 'Analytics', bio: 'Analyzes data and generates reports', daily_cost: 3.2, last_active: new Date().toISOString() },
+];
+const DEMO_TASKS = [
+    { id: 201, title: 'Write Q1 blog post', description: 'Quarterly review blog post for the company blog', status: 'todo', priority: 'high', agent_id: 101, agent_name: 'Content Writer', agent_emoji: '✍️', category: 'content', created: new Date(Date.now() - 86400000).toISOString() },
+    { id: 202, title: 'Review auth PR #42', description: 'Security review of the new auth flow', status: 'in_progress', priority: 'high', agent_id: 102, agent_name: 'Code Reviewer', agent_emoji: '🔍', category: 'projects', created: new Date(Date.now() - 43200000).toISOString() },
+    { id: 203, title: 'Analyze user retention', description: 'Monthly retention cohort analysis', status: 'in_progress', priority: 'medium', agent_id: 103, agent_name: 'Data Analyst', agent_emoji: '📊', category: 'business', created: new Date(Date.now() - 172800000).toISOString() },
+    { id: 204, title: 'Draft social media plan', description: 'Plan content for next 2 weeks', status: 'todo', priority: 'medium', agent_id: 101, agent_name: 'Content Writer', agent_emoji: '✍️', category: 'content', created: new Date().toISOString() },
+    { id: 205, title: 'Deploy monitoring dashboard', description: 'Set up Grafana dashboards for prod', status: 'done', priority: 'low', agent_id: 102, agent_name: 'Code Reviewer', agent_emoji: '🔍', category: 'system', created: new Date(Date.now() - 259200000).toISOString() },
+];
+const DEMO_JOURNAL = [
+    { id: 301, date: new Date().toISOString().slice(0, 10), agent_id: 101, content: 'Drafted 2 blog post outlines and published the weekly newsletter. Engagement up 15%.', source: 'auto' },
+    { id: 302, date: new Date().toISOString().slice(0, 10), agent_id: 103, content: 'Completed user funnel analysis — found 23% drop-off at onboarding step 3. Recommended simplification.', source: 'auto' },
+    { id: 303, date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), agent_id: 102, content: 'Reviewed 4 PRs, found 2 critical SQL injection vulnerabilities. Both patched.', source: 'auto' },
+];
+
+function demoApi(path, options = {}) {
+    if (path.startsWith('/dashboard')) {
+        return Promise.resolve({
+            agents: DEMO_AGENTS,
+            tasks_active: 4,
+            tasks_done: 1,
+            total_cost: 12.50,
+            alerts_unread: 0,
+        });
+    }
+    if (path.startsWith('/agents')) return Promise.resolve(DEMO_AGENTS);
+    if (path === '/tasks' || path.startsWith('/tasks?')) return Promise.resolve(DEMO_TASKS);
+    if (path.startsWith('/system/status')) return Promise.resolve({ status: 'ok', gateway: true });
+    if (path.startsWith('/spending/current')) return Promise.resolve({ today: 12.50, month: 87.30, plan: 'Pro', window_hours: 5, usage: { all: { used: 0, limit: 44000, pct: 0 }, models: [] }, agents: DEMO_AGENTS.map(a => ({ agent_id: a.id, agent_name: a.name, cost: a.daily_cost })) });
+    if (path.startsWith('/spending/timeline')) return Promise.resolve({ labels: [], data: [] });
+    if (path.startsWith('/spending/sessions')) return Promise.resolve([]);
+    if (path.startsWith('/journal')) return Promise.resolve(DEMO_JOURNAL);
+    if (path.startsWith('/alerts')) return Promise.resolve([]);
+    if (path.startsWith('/crons')) return Promise.resolve([]);
+    if (path.startsWith('/files')) return Promise.resolve([]);
+    // For write operations
+    showToast('Sign up to save changes', 'info', { duration: 2000 });
+    return Promise.resolve({ ok: true });
+}
+
+function enterDemoMode() {
+    isDemoMode = true;
+    currentUser = { id: 0, name: 'Demo User', onboarding_complete: true, is_superadmin: false };
+    currentWorkspace = { id: 0, name: 'Demo Workspace', tier: 'pro', agent_limit: 10 };
+    agents = [...DEMO_AGENTS];
+    allTasks = [...DEMO_TASKS];
+
+    hideOnboarding();
+
+    // Inject demo banner
+    let banner = document.getElementById('demo-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'demo-banner';
+        banner.innerHTML = `
+            <span>🎮 Demo Mode — Sign up to save your data</span>
+            <button onclick="exitDemoMode()">Exit Demo</button>
+        `;
+        document.getElementById('app').prepend(banner);
+    }
+    banner.style.display = '';
+
+    // Hide irrelevant nav items in demo
+    document.getElementById('nav-admin')?.style && (document.getElementById('nav-admin').style.display = 'none');
+
+    const validRoutes = ['dashboard', 'kanban', 'agents', 'journal'];
+    // Hide files/crons/alerts in demo — less relevant
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        const r = btn.dataset.route;
+        if (['files', 'crons', 'alerts'].includes(r)) btn.style.display = 'none';
+        else btn.style.display = '';
+    });
+
+    navigate('dashboard');
+}
+
+function exitDemoMode() {
+    isDemoMode = false;
+    currentUser = null;
+    currentWorkspace = null;
+    agents = [];
+    allTasks = [];
+    jwtToken = null;
+    localStorage.removeItem('crm_jwt');
+
+    const banner = document.getElementById('demo-banner');
+    if (banner) banner.style.display = 'none';
+
+    // Restore all nav buttons
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.style.display = '');
+
+    showInviteScreen();
+}
 
 // --- API Client ---
 async function api(path, options = {}) {
+    if (isDemoMode) return demoApi(path, options);
     const headers = { 'Content-Type': 'application/json', ...options.headers };
     if (jwtToken) headers['Authorization'] = `Bearer ${jwtToken}`;
     if (tg?.initData) headers['X-Telegram-Init-Data'] = tg.initData;
@@ -168,8 +268,26 @@ async function authenticateUser() {
             console.warn('JWT /me failed:', e.message);
             jwtToken = null;
             localStorage.removeItem('crm_jwt');
+            // JWT expired/invalid — retry with initData
+            if (tg?.initData) {
+                try {
+                    const retryResp = await api('/auth/telegram', {
+                        method: 'POST',
+                        body: JSON.stringify({ init_data: tg.initData }),
+                    });
+                    jwtToken = retryResp.access_token;
+                    localStorage.setItem('crm_jwt', jwtToken);
+                    currentUser = retryResp.user;
+                    return retryResp.user;
+                } catch (e2) {
+                    if (e2.status === 403) return { needs_invite: true };
+                }
+            }
         }
     }
+
+    // No auth at all — if we have initData, user needs invite
+    if (tg?.initData) return { needs_invite: true };
 
     return null;
 }
@@ -202,7 +320,12 @@ function showInviteScreen(errorMsg = '') {
                 ${errorMsg ? `<div style="color:var(--error); font-size:13px; text-align:center; margin-bottom:12px;">${errorMsg}</div>` : ''}
             </div>
             <button class="onboarding-btn" id="invite-submit-btn" onclick="submitInviteCode()">Continue</button>
-            <div style="margin-top:20px; font-size:12px; color:var(--text-hint);">
+            <div style="margin-top:16px;">
+                <button class="onboarding-btn demo-btn" onclick="enterDemoMode()" style="background:transparent; border:1px solid var(--border); color:var(--text-secondary); font-size:15px;">
+                    🎮 Try Demo
+                </button>
+            </div>
+            <div style="margin-top:16px; font-size:12px; color:var(--text-hint);">
                 Don't have a code? Join our <a href="https://t.me/agentforgeai" style="color:var(--link);">Telegram</a> for updates.
             </div>
         </div>
@@ -330,23 +453,24 @@ function renderOnboardingStep() {
             container.innerHTML = `
                 <div class="onboarding-step">
                     ${stepsIndicatorHTML(2)}
-                    <div class="onboarding-title">Connect Agents</div>
-                    <div class="onboarding-subtitle">How do you want to add agents?</div>
+                    <div class="onboarding-title">Connect Your Agents</div>
+                    <div class="onboarding-subtitle">Link your AI agents to this dashboard</div>
                     <div class="onboarding-cards">
-                        <div class="onboarding-card" id="ob-card-import" onclick="showImportForm()">
+                        <div class="onboarding-card" id="ob-card-link" onclick="obGenerateLink()">
                             <div class="onboarding-card-icon">🔗</div>
-                            <div class="onboarding-card-title">OpenClaw Auto-Import</div>
-                            <div class="onboarding-card-desc">Connect your OpenClaw instance</div>
+                            <div class="onboarding-card-title">Generate Connect Link</div>
+                            <div class="onboarding-card-desc">Copy link → paste in your agent config</div>
                         </div>
                         <div class="onboarding-card" id="ob-card-manual" onclick="showManualForm()">
                             <div class="onboarding-card-icon">✋</div>
                             <div class="onboarding-card-title">Add Manually</div>
-                            <div class="onboarding-card-desc">Create agents one by one</div>
+                            <div class="onboarding-card-desc">Create agent cards by hand</div>
                         </div>
                     </div>
                     <div id="ob-form-area"></div>
                     ${agentListHTML}
-                    <button class="onboarding-btn" onclick="onboardingNext()" ${onboardingAgents.length === 0 ? 'disabled' : ''}>Next</button>
+                    <button class="onboarding-btn" onclick="onboardingNext()">Next</button>
+                    ${onboardingAgents.length === 0 ? '<button class="onboarding-btn onboarding-btn-secondary" onclick="onboardingNext()">Skip for now</button>' : ''}
                 </div>
             `;
             break;
@@ -410,17 +534,45 @@ window.onboardingNext = function() {
 };
 
 window.showImportForm = function() {
-    document.getElementById('ob-card-import').classList.add('active');
-    document.getElementById('ob-card-manual').classList.remove('active');
-    document.getElementById('ob-form-area').innerHTML = `
-        <div class="onboarding-form">
-            <div class="field">
-                <label>OpenClaw URL</label>
-                <input type="text" id="ob-openclaw-url" placeholder="http://localhost:3335">
+    // Legacy — redirect to generate link
+    obGenerateLink();
+};
+
+window.obGenerateLink = async function() {
+    const linkCard = document.getElementById('ob-card-link');
+    const manualCard = document.getElementById('ob-card-manual');
+    if (linkCard) linkCard.classList.add('active');
+    if (manualCard) manualCard.classList.remove('active');
+    const area = document.getElementById('ob-form-area');
+    area.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-hint);">Generating link...</div>';
+    try {
+        const resp = await api('/connect/generate', { method: 'POST' });
+        const promptText = `Connect to my AgentCRM dashboard using this link: ${resp.connect_url}`;
+        area.innerHTML = `
+            <div class="onboarding-form">
+                <div style="text-align:center;margin-bottom:16px;">
+                    <div style="font-size:15px;font-weight:600;margin-bottom:8px;">✅ Link Generated!</div>
+                    <div style="font-size:13px;color:var(--text-hint);">Send this to your AI agent</div>
+                </div>
+
+                <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;">
+                    <div style="font-size:12px;color:var(--text-hint);margin-bottom:6px;">📋 Copy and send to your agent:</div>
+                    <div style="font-size:14px;line-height:1.5;color:var(--text);">${promptText}</div>
+                </div>
+                <button class="onboarding-btn" onclick="navigator.clipboard.writeText(\`${promptText}\`);this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy Message',2000)">📋 Copy Message</button>
+
+                <div style="text-align:left;margin-top:20px;font-size:13px;line-height:1.7;color:var(--text-secondary);">
+                    <div style="font-weight:600;margin-bottom:8px;color:var(--text);">How it works:</div>
+                    <div>1️⃣ Tap <strong>Copy Message</strong> above</div>
+                    <div>2️⃣ Paste it in a chat with your AI agent</div>
+                    <div>3️⃣ Your agent will connect automatically</div>
+                    <div style="margin-top:10px;font-size:12px;color:var(--text-hint);">⏱ Link expires in 24 hours · One-time use</div>
+                </div>
             </div>
-            <button class="onboarding-btn" onclick="importFromOpenClaw()" style="margin-top:0">Connect</button>
-        </div>
-    `;
+        `;
+    } catch(e) {
+        area.innerHTML = '<div style="color:var(--error);text-align:center;padding:12px;">' + e.message + '</div>';
+    }
 };
 
 window.showManualForm = function() {
@@ -564,9 +716,14 @@ function updateNav() {
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.route === currentRoute);
     });
-    const titles = { dashboard: 'Dashboard', kanban: 'Task Board', agents: 'Agents', crons: 'Crons', files: 'Files', journal: 'Journal', alerts: 'Alerts' };
+    const titles = { dashboard: 'Dashboard', kanban: 'Task Board', agents: 'Agents', crons: 'Crons', files: 'Files', journal: 'Journal', alerts: 'Alerts', admin: 'Admin Panel' };
     document.getElementById('page-title').textContent = titles[currentRoute] || 'Agent CRM';
     updateHeaderTier();
+    // Show/hide admin tab
+    const adminBtn = document.getElementById('nav-admin');
+    if (adminBtn) {
+        adminBtn.style.display = (currentUser?.is_superadmin && !isDemoMode) ? '' : 'none';
+    }
 }
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -610,6 +767,7 @@ async function render() {
             case 'files': await renderFiles(content); break;
             case 'journal': await renderJournal(content); break;
             case 'alerts': await renderAlerts(content); break;
+            case 'admin': await renderAdmin(content); break;
             default: content.innerHTML = '<div class="empty-state"><p>Not found</p></div>';
         }
     } catch (err) {
@@ -707,8 +865,10 @@ async function renderDashboard(el) {
         </div>`;
     }).join('');
 
+    const hasOpenClaw = sysStatus.gateway === true;
+
     el.innerHTML = `
-        <div class="system-bar">
+        ${hasOpenClaw ? `<div class="system-bar">
             <span class="sys-status">${statusIcon} ${statusText}</span>
             <div class="sys-actions">
                 <button class="btn-sm btn-danger-sm" onclick="systemAction('stop')">⏹ Stop</button>
@@ -736,10 +896,10 @@ async function renderDashboard(el) {
             <div class="budget-meta">
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
                 <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>
-            </div>
-            ${w.models?.length ? `<div class="section-label">Weekly by model</div><div class="model-breakdown">${renderModels(w.models)}</div>` : ''}
-            ${s.models?.length ? `<div class="section-label">Session by model</div><div class="model-breakdown">${renderModels(s.models)}</div>` : ''}
-        </div>
+            </div>` : ''}
+            ${hasOpenClaw && w.models?.length ? `<div class="section-label">Weekly by model</div><div class="model-breakdown">${renderModels(w.models)}</div>` : ''}
+            ${hasOpenClaw && s.models?.length ? `<div class="section-label">Session by model</div><div class="model-breakdown">${renderModels(s.models)}</div>` : ''}
+        ${hasOpenClaw ? '</div>' : ''}
         ${periodFilterHTML()}
         <div class="summary-grid">
             <div class="summary-card">
@@ -1135,9 +1295,9 @@ async function renderAgents(el) {
     const agentLimit = currentWorkspace?.agent_limit || 3;
     const limitInfo = `<div class="agent-limit-info">🤖 ${agents.length}/${agentLimit} agents (${tier.charAt(0).toUpperCase() + tier.slice(1)})</div>`;
 
-    // Connect Remote Agent section (owner only)
+    // Connect Remote Agent section (all users)
     let connectSection = '';
-    if (currentUser?.is_owner) {
+    {
         const pendingTokens = await api('/connect/status').catch(() => []);
         const pendingHtml = pendingTokens.length
             ? pendingTokens.map(t => {
@@ -1195,7 +1355,15 @@ async function renderAgents(el) {
                 </div>
             </div>
         </div>`).join('') + '</div>'
-        : '<div class="empty-state"><div class="empty-icon">🤖</div><p>No agents</p></div>');
+        : `<div class="empty-state">
+            <div class="empty-icon">🤖</div>
+            <p>No agents yet</p>
+            <p style="font-size:13px;color:var(--text-hint);margin-top:4px;">Add agents to start managing your AI team</p>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;width:100%;max-width:280px;">
+                <button class="onboarding-btn" onclick="showAddAgentModal()">+ Add Agent Manually</button>
+                <button class="onboarding-btn onboarding-btn-secondary" onclick="rerunOnboarding()">🔄 Re-run Setup Wizard</button>
+            </div>
+        </div>`);
 }
 
 window.changeAgentModel = async function(agentId, model) {
@@ -1210,6 +1378,54 @@ window.changeAgentModel = async function(agentId, model) {
         showToast(err.message, 'error');
         render();
     }
+};
+
+window.showAddAgentModal = function() {
+    const modal = document.getElementById('modal-overlay');
+    const form = document.getElementById('task-form');
+    const title = document.getElementById('modal-title');
+    // Repurpose task modal for quick agent add
+    title.textContent = 'Add Agent';
+    form.innerHTML = `
+        <div class="field">
+            <label for="new-agent-name">Name</label>
+            <input type="text" id="new-agent-name" required placeholder="e.g. Caramel">
+        </div>
+        <div class="field">
+            <label for="new-agent-emoji">Emoji</label>
+            <input type="text" id="new-agent-emoji" placeholder="🤖" maxlength="4" style="width:60px;">
+        </div>
+        <div class="field">
+            <label for="new-agent-role">Role</label>
+            <input type="text" id="new-agent-role" placeholder="e.g. Lead Coordinator">
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-primary" onclick="submitNewAgent()">Create Agent</button>
+        </div>
+    `;
+    modal.classList.remove('hidden');
+};
+
+window.submitNewAgent = async function() {
+    const name = document.getElementById('new-agent-name')?.value?.trim();
+    const emoji = document.getElementById('new-agent-emoji')?.value?.trim() || '🤖';
+    const role = document.getElementById('new-agent-role')?.value?.trim() || '';
+    if (!name) { showToast('Name is required', 'error'); return; }
+    try {
+        await api('/agents', { method: 'POST', body: JSON.stringify({ name, emoji, role, model: 'claude-sonnet-4-6', status: 'idle' }) });
+        closeModal();
+        showToast('Agent created!', 'success');
+        render();
+    } catch (e) { showToast(e.message, 'error'); }
+};
+
+window.rerunOnboarding = async function() {
+    try {
+        await api('/auth/onboarding-complete', { method: 'POST', body: JSON.stringify({ complete: false }) });
+    } catch(e) { /* ignore */ }
+    onboardingStep = 1;
+    onboardingAgents = [];
+    showOnboarding();
 };
 
 window.generateConnectLink = async function() {
@@ -1283,8 +1499,10 @@ async function renderAlerts(el) {
     const awPct = Math.min(100, aw.pct || 0).toFixed(1);
     const asPct = Math.min(100, as2.pct || 0).toFixed(1);
 
+    const alertHasOpenClaw = sysStatus.gateway === true;
+
     el.innerHTML = `
-        <div class="system-bar">
+        ${alertHasOpenClaw ? `<div class="system-bar">
             <span class="sys-status">${statusIcon} ${sysStatus.gateway ? 'Running' : 'Stopped'}</span>
             <div class="sys-actions">
                 <button class="btn-sm btn-danger-sm" onclick="systemAction('stop')">⏹ Stop</button>
@@ -1305,7 +1523,7 @@ async function renderAlerts(el) {
                 <span class="budget-tag">📅 Today: $${spending.today.toFixed(2)}</span>
                 <span class="budget-tag">📆 Month: $${(spending.month||0).toFixed(2)}</span>
             </div>
-        </div>
+        </div>` : ''}
         <div class="section-header">Today (hourly)</div>
         <div class="chart-container"><canvas id="alerts-daily-chart"></canvas></div>
         <div class="section-header">Spending (7 days)</div>
@@ -1740,6 +1958,161 @@ function escapeHtml(s) {
     return d.innerHTML;
 }
 
+// ============================================
+//  ADMIN PANEL (superadmin only)
+// ============================================
+
+async function renderAdmin(el) {
+    if (!currentUser?.is_superadmin) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><p>Access denied</p></div>';
+        return;
+    }
+
+    el.innerHTML = '<div class="loading">Loading admin data...</div>';
+
+    let stats, users, workspaces, invites;
+    try {
+        [stats, users, workspaces, invites] = await Promise.all([
+            api('/admin/stats'),
+            api('/admin/users'),
+            api('/admin/workspaces'),
+            api('/admin/invites'),
+        ]);
+    } catch (err) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Failed to load admin data: ${escapeHtml(err.message)}</p></div>`;
+        return;
+    }
+
+    el.innerHTML = `
+        <!-- Stats Cards -->
+        <div class="admin-stats-grid">
+            <div class="card admin-stat-card">
+                <div class="admin-stat-value">${stats.total_users}</div>
+                <div class="admin-stat-label">Users</div>
+            </div>
+            <div class="card admin-stat-card">
+                <div class="admin-stat-value">${stats.total_workspaces}</div>
+                <div class="admin-stat-label">Workspaces</div>
+            </div>
+            <div class="card admin-stat-card">
+                <div class="admin-stat-value">${stats.total_agents}</div>
+                <div class="admin-stat-label">Agents</div>
+            </div>
+            <div class="card admin-stat-card">
+                <div class="admin-stat-value">${stats.total_tasks}</div>
+                <div class="admin-stat-label">Tasks</div>
+            </div>
+        </div>
+
+        <!-- Invites Summary -->
+        <div class="admin-invite-summary" style="margin-bottom:16px;">
+            <span class="admin-tag admin-tag-green">🎟️ ${stats.invites_remaining} invites remaining</span>
+            <span class="admin-tag admin-tag-dim">${stats.invites_used} used</span>
+            <button class="btn btn-sm btn-primary" onclick="adminCreateInvite()" style="margin-left:auto;">+ New Invite</button>
+        </div>
+
+        <!-- Users Table -->
+        <div class="section-header">Users (${users.length})</div>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead><tr>
+                    <th>ID</th><th>Name</th><th>TG ID</th><th>Created</th><th>Workspaces</th><th>Onboarding</th><th></th>
+                </tr></thead>
+                <tbody>
+                    ${users.map(u => `<tr>
+                        <td>${u.id}</td>
+                        <td>${escapeHtml(u.name)} ${u.is_superadmin ? '<span class="admin-badge">👑</span>' : ''}</td>
+                        <td class="mono">${u.telegram_id || '—'}</td>
+                        <td>${u.created ? new Date(u.created).toLocaleDateString() : '—'}</td>
+                        <td>${u.workspaces_count}</td>
+                        <td>${u.onboarding_complete ? '✅' : '⏳'}</td>
+                        <td>${!u.is_superadmin ? `<button class="btn btn-xs btn-danger" onclick="adminDeleteUser(${u.id}, '${escapeHtml(u.name)}')">Delete</button>` : ''}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Workspaces Table -->
+        <div class="section-header" style="margin-top:20px;">Workspaces (${workspaces.length})</div>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead><tr>
+                    <th>ID</th><th>Name</th><th>Owner</th><th>Tier</th><th>Agents</th><th>Created</th>
+                </tr></thead>
+                <tbody>
+                    ${workspaces.map(ws => `<tr>
+                        <td>${ws.id}</td>
+                        <td>${escapeHtml(ws.name)}</td>
+                        <td>${escapeHtml(ws.owner_name)}</td>
+                        <td><span class="tier-badge tier-${ws.tier}">${ws.tier}</span></td>
+                        <td>${ws.agent_count}</td>
+                        <td>${ws.created ? new Date(ws.created).toLocaleDateString() : '—'}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Invite Codes Table -->
+        <div class="section-header" style="margin-top:20px;">Invite Codes (${invites.length})</div>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead><tr>
+                    <th>Code</th><th>Uses</th><th>Note</th><th>Created</th><th>Status</th><th></th>
+                </tr></thead>
+                <tbody>
+                    ${invites.map(inv => `<tr>
+                        <td class="mono">${inv.code}</td>
+                        <td>${inv.use_count}/${inv.max_uses}</td>
+                        <td>${escapeHtml(inv.note)}</td>
+                        <td>${inv.created ? new Date(inv.created).toLocaleDateString() : '—'}</td>
+                        <td><span class="admin-tag ${inv.status === 'active' ? 'admin-tag-green' : 'admin-tag-dim'}">${inv.status}</span></td>
+                        <td><button class="btn btn-xs btn-danger" onclick="adminDeleteInvite(${inv.id})">🗑️</button></td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+window.adminDeleteUser = async function(userId, name) {
+    if (!confirm(`Delete user "${name}" and all their data? This cannot be undone.`)) return;
+    try {
+        await api(`/admin/users/${userId}`, { method: 'DELETE' });
+        showToast(`User ${name} deleted`, 'success');
+        render();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+window.adminDeleteInvite = async function(inviteId) {
+    if (!confirm('Delete this invite code?')) return;
+    try {
+        await api(`/admin/invites/${inviteId}`, { method: 'DELETE' });
+        showToast('Invite deleted', 'success');
+        render();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+window.adminCreateInvite = async function() {
+    const maxUses = prompt('Max uses for this invite code:', '5');
+    if (!maxUses) return;
+    const note = prompt('Note (optional):', '') || '';
+    try {
+        const result = await api('/admin/invites', {
+            method: 'POST',
+            body: JSON.stringify({ max_uses: parseInt(maxUses) || 1, note }),
+        });
+        showToast(`Invite created: ${result.code}`, 'success', { duration: 8000 });
+        render();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+
 function timeAgo(dateStr) {
     const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
     if (diff < 60) return 'just now';
@@ -1791,7 +2164,7 @@ function timeAgo(dateStr) {
             showOnboarding();
         }
 
-        const validRoutes = ['dashboard', 'kanban', 'agents', 'crons', 'files', 'journal', 'alerts'];
+        const validRoutes = ['dashboard', 'kanban', 'agents', 'crons', 'files', 'journal', 'alerts', 'admin'];
         let initHash = window.location.hash.slice(1);
         if (initHash.includes('tgWebApp') || initHash.includes('=')) {
             initHash = '';

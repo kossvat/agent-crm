@@ -61,6 +61,9 @@ def _migrate_columns():
         "alerts": {
             "workspace_id": "INTEGER REFERENCES workspaces(id)",
         },
+        "users": {
+            "is_superadmin": "BOOLEAN DEFAULT 0",
+        },
     }
 
     with engine.connect() as conn:
@@ -84,6 +87,13 @@ def _migrate_columns():
                     "VALUES (1, 1080204489, 'Sviatoslav', 1)"
                 ))
                 conn.commit()
+
+        # Seed superadmin flag
+        if inspector.has_table("users"):
+            conn.execute(sqlalchemy.text(
+                "UPDATE users SET is_superadmin = 1 WHERE telegram_id = 1080204489"
+            ))
+            conn.commit()
 
         if inspector.has_table("workspaces"):
             row = conn.execute(sqlalchemy.text("SELECT id FROM workspaces WHERE id = 1")).fetchone()

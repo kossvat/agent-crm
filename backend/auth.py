@@ -136,17 +136,19 @@ def get_current_user(request: Request) -> dict:
         try:
             payload = decode_access_token(token)
             jwt_user_id = payload["user_id"]
-            # Resolve is_owner from DB (check telegram_id)
+            # Resolve is_owner and is_superadmin from DB
             from backend.database import SessionLocal
             from backend.models import User
             _db = SessionLocal()
             _user = _db.query(User).filter(User.id == jwt_user_id).first()
             _is_owner = _user and _user.telegram_id == OWNER_USER_ID if _user else False
+            _is_superadmin = _user.is_superadmin if _user else False
             _db.close()
             return {
                 "user_id": jwt_user_id,
                 "workspace_id": payload["workspace_id"],
                 "is_owner": _is_owner,
+                "is_superadmin": _is_superadmin,
                 "full_access": _is_owner,
                 "agent_id": None,
                 "username": _user.name if _user else "jwt_user",

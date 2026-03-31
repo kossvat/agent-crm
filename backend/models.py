@@ -70,6 +70,7 @@ class User(Base):
     name = Column(String(100), nullable=False)
     created = Column(DateTime(timezone=True), default=utcnow)
     onboarding_complete = Column(Boolean, default=False)
+    is_superadmin = Column(Boolean, default=False)
 
     workspaces = relationship("Workspace", back_populates="owner")
 

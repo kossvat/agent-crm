@@ -14,7 +14,8 @@ from backend.auth import get_current_user, create_workspace_token
 router = APIRouter(prefix="/api/connect", tags=["connect"])
 
 DEFAULT_EXPIRY_HOURS = 24
-CRM_BASE_URL = "https://crm.myaiagentscrm.com"
+import os
+CRM_BASE_URL = os.getenv("CRM_BASE_URL", "https://myaiagentscrm.com")
 
 
 # --- Schemas ---
@@ -47,9 +48,7 @@ def generate_connect_token(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Generate a magic link token. Owner only."""
-    if not user.get("is_owner"):
-        raise HTTPException(status_code=403, detail="Owner only")
+    """Generate a magic link token for connecting remote agents."""
 
     ws_id = user.get("workspace_id", 1)
     user_id = user.get("user_id")

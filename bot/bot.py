@@ -14,6 +14,9 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 from backend.config import BOT_TOKEN
 
+# Load dotenv explicitly before reading WEB_APP_URL
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 WEB_APP_URL = os.getenv("WEB_APP_URL", "")
 
 
