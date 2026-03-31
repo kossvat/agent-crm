@@ -92,16 +92,16 @@ class TaskResponse(BaseModel):
 
     id: int
     title: str
-    description: str
+    description: Optional[str] = ""
     status: str
-    priority: str
-    category: str = ""
-    agent_id: Optional[int]
-    created_by: str
-    deadline: Optional[datetime]
+    priority: Optional[str] = "medium"
+    category: Optional[str] = ""
+    agent_id: Optional[int] = None
+    created_by: Optional[str] = ""
+    deadline: Optional[datetime] = None
     deadline_status: Optional[str] = None  # "ok", "soon", "overdue"
-    created: datetime
-    updated: datetime
+    created: Optional[datetime] = None
+    updated: Optional[datetime] = None
     agent: Optional[AgentResponse] = None
 
 
