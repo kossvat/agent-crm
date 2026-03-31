@@ -1404,7 +1404,7 @@ window.onModelDropdownChange = function(agentId) {
     const agentName = agent?.name || 'Agent';
 
     showConfirmDialog(
-        `Change <strong>${agentName}</strong> model to <strong>${modelShort}</strong>?<br><small style="color:var(--text-dim)">Gateway will restart to apply the change.</small>`,
+        `Change <strong>${agentName}</strong> model to <strong>${modelShort}</strong>?<br><small style="color:var(--text-dim)">Change will apply automatically within ~1 minute.</small>`,
         async () => {
             try {
                 await api(`/agents/${agentId}`, {

@@ -304,13 +304,10 @@ def main():
                 {"status": "failed", "error": f"Unknown command type: {cmd_type}"},
             )
 
-    # 3. Restart gateway if any model changes were applied
-    if applied_any_model and not args.dry_run:
-        print("Restarting gateway...")
-        success, message = restart_gateway()
-        print(f"  {message}")
-        if not success:
-            print("WARNING: Gateway restart failed — changes saved but not yet active", file=sys.stderr)
+    # 3. Model changes auto-apply via OpenClaw hot reload (hybrid mode)
+    # No gateway restart needed — just writing openclaw.json is enough
+    if applied_any_model:
+        print("Model changes written to openclaw.json — hot reload will apply automatically.")
 
     print("Done.")
 
