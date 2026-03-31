@@ -1611,8 +1611,20 @@ window.generateConnectLink = async function() {
 window.copySetupMessage = async function() {
     try {
         const data = await api(`/setup/message`);
-        await navigator.clipboard.writeText(data.message);
+        // Try clipboard API first, fallback to execCommand
+        try {
+            await navigator.clipboard.writeText(data.message);
+        } catch {
+            const ta = document.createElement('textarea');
+            ta.value = data.message;
+            ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
         showToast('Setup message copied! Send it to your agent.', 'success');
+        if (tg) tg.HapticFeedback?.impactOccurred('light');
     } catch (err) {
         showToast('Failed to copy: ' + err.message, 'error');
     }
