@@ -177,11 +177,11 @@ class JournalEntryResponse(BaseModel):
 
     id: int
     date: date
-    agent_id: Optional[int]
-    content: str
-    source: str
-    created: datetime
-    updated: datetime
+    agent_id: Optional[int] = None
+    content: Optional[str] = ""
+    source: Optional[str] = ""
+    created: Optional[datetime] = None
+    updated: Optional[datetime] = None
     agent: Optional[AgentResponse] = None
 
 
