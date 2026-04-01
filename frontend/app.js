@@ -1611,22 +1611,24 @@ window.generateConnectLink = async function() {
 window.copySetupMessage = async function() {
     try {
         const data = await api(`/setup/message`);
-        // Try clipboard API first, fallback to execCommand
-        try {
-            await navigator.clipboard.writeText(data.message);
-        } catch {
-            const ta = document.createElement('textarea');
-            ta.value = data.message;
-            ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-        }
-        showToast('Setup message copied! Send it to your agent.', 'success');
+        // Show modal with selectable text (clipboard blocked in TG WebView)
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+        overlay.innerHTML = `
+            <div style="background:var(--card);border-radius:12px;padding:16px;max-width:90vw;max-height:80vh;overflow-y:auto;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <span style="font-weight:600;font-size:15px;">📋 Setup Message</span>
+                    <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;">✕</button>
+                </div>
+                <p style="color:var(--text-dim);font-size:12px;margin-bottom:8px;">Long-press to select & copy, then send to your AI agent:</p>
+                <div style="background:var(--bg);border-radius:8px;padding:12px;font-size:13px;line-height:1.5;user-select:text;-webkit-user-select:text;word-break:break-all;">${data.message}</div>
+            </div>
+        `;
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
         if (tg) tg.HapticFeedback?.impactOccurred('light');
     } catch (err) {
-        showToast('Failed to copy: ' + err.message, 'error');
+        showToast('Failed to load: ' + err.message, 'error');
     }
 };
 
