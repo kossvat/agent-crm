@@ -31,6 +31,7 @@ services:
       DEV_MODE: ${DEV_MODE:-false}
       HOST: "0.0.0.0"
       PORT: "8100"
+      WEB_APP_URL: ${WEB_APP_URL:-}
     ports:
       - "8100:8100"
     networks:

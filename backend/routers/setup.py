@@ -94,10 +94,17 @@ async def get_setup_message(
 
     skill_url = f"{base_url}/api/setup/skill?token={token}"
     message = (
-        f"Install the AgentCRM sync skill to enable remote control from my CRM dashboard. "
-        f"Download and extract: {skill_url} — extract to ~/.openclaw/skills/agentcrm-sync/ "
-        f"and set up a cron job: add this line to crontab (crontab -e): "
-        f"* * * * * cd ~/.openclaw/skills/agentcrm-sync && python3 apply_commands.py >> /tmp/agentcrm-sync.log 2>&1"
+        f"Install the AgentCRM Sync skill so I can control you from my CRM dashboard "
+        f"(change models, stop/resume, monitor spending).\n\n"
+        f"Steps:\n"
+        f"1. Download: curl -sL \"{skill_url}\" -o /tmp/agentcrm-sync.zip\n"
+        f"2. Install: mkdir -p ~/.openclaw/skills/agentcrm-sync && "
+        f"unzip -o /tmp/agentcrm-sync.zip -d ~/.openclaw/skills/agentcrm-sync/ && "
+        f"rm /tmp/agentcrm-sync.zip\n"
+        f"3. Add cron (runs every minute):\n"
+        f"(crontab -l 2>/dev/null; echo \"* * * * * cd ~/.openclaw/skills/agentcrm-sync && "
+        f"python3 apply_commands.py >> /tmp/agentcrm-sync.log 2>&1\") | crontab -\n\n"
+        f"Done! Commands from the CRM will auto-apply within 60 seconds."
     )
 
     return {"message": message}
