@@ -14,7 +14,7 @@ from backend.database import create_tables, SessionLocal
 from backend.auth import get_current_user
 from backend.services.sync import full_sync
 
-from backend.routers import dashboard, agents, tasks, crons, costs, alerts, spending, system, files, auth_router, connect, ingest, bot, admin, commands, setup
+from backend.routers import dashboard, agents, tasks, crons, costs, alerts, spending, system, files, auth_router, connect, ingest, bot, admin, commands, setup, demo
 
 log = logging.getLogger("agent-crm")
 
@@ -128,6 +128,7 @@ app.include_router(bot.router)
 app.include_router(admin.router)
 app.include_router(commands.router)
 app.include_router(setup.router)
+app.include_router(demo.router)
 
 from backend.routers import journal
 app.include_router(journal.router)

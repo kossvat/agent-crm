@@ -119,29 +119,31 @@ const DEMO_JOURNAL = [
     { id: 303, date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), agent_id: 102, content: 'Reviewed 4 PRs, found 2 critical SQL injection vulnerabilities. Both patched.', source: 'auto' },
 ];
 
-function demoApi(path, options = {}) {
+async function demoApi(path, options = {}) {
+    // Read-only endpoints — fetch from backend demo API
     if (path.startsWith('/dashboard')) {
-        return Promise.resolve({
-            agents: DEMO_AGENTS,
-            tasks_active: 4,
-            tasks_done: 1,
-            total_cost: 12.50,
-            alerts_unread: 0,
-        });
+        try { return await fetch('/api/demo/dashboard').then(r => r.json()); } catch(_) {}
+        return { agents: DEMO_AGENTS, tasks_active: 4, tasks_done: 1, total_cost: 12.50, alerts_unread: 0 };
     }
-    if (path.startsWith('/agents')) return Promise.resolve(DEMO_AGENTS);
-    if (path === '/tasks' || path.startsWith('/tasks?')) return Promise.resolve(DEMO_TASKS);
-    if (path.startsWith('/system/status')) return Promise.resolve({ status: 'ok', gateway: true });
-    if (path.startsWith('/spending/current')) return Promise.resolve({ today: 12.50, month: 87.30, plan: 'Pro', window_hours: 5, usage: { all: { used: 0, limit: 44000, pct: 0 }, models: [] }, agents: DEMO_AGENTS.map(a => ({ agent_id: a.id, agent_name: a.name, cost: a.daily_cost })) });
-    if (path.startsWith('/spending/timeline')) return Promise.resolve({ labels: [], data: [] });
-    if (path.startsWith('/spending/sessions')) return Promise.resolve([]);
-    if (path.startsWith('/journal')) return Promise.resolve(DEMO_JOURNAL);
-    if (path.startsWith('/alerts')) return Promise.resolve([]);
-    if (path.startsWith('/crons')) return Promise.resolve([]);
-    if (path.startsWith('/files')) return Promise.resolve([]);
-    // For write operations
-    showToast('Sign up to save changes', 'info', { duration: 2000 });
-    return Promise.resolve({ ok: true });
+    if (path.startsWith('/agents')) {
+        try { return await fetch('/api/demo/agents').then(r => r.json()); } catch(_) {}
+        return DEMO_AGENTS;
+    }
+    if (path === '/tasks' || path.startsWith('/tasks?')) {
+        try { return await fetch('/api/demo/tasks').then(r => r.json()); } catch(_) {}
+        return DEMO_TASKS;
+    }
+    if (path.startsWith('/system/status')) return { status: 'ok', gateway: true };
+    if (path.startsWith('/spending/current')) return { today: 12.50, month: 87.30, plan: 'Pro', window_hours: 5, usage: { all: { used: 0, limit: 44000, pct: 0 }, models: [] }, agents: DEMO_AGENTS.map(a => ({ agent_id: a.id, agent_name: a.name, cost: a.daily_cost })) };
+    if (path.startsWith('/spending/timeline')) return { labels: [], data: [] };
+    if (path.startsWith('/spending/sessions')) return [];
+    if (path.startsWith('/journal')) return DEMO_JOURNAL;
+    if (path.startsWith('/alerts')) return [];
+    if (path.startsWith('/crons')) return [];
+    if (path.startsWith('/files')) return [];
+    // Write operations — block in demo mode
+    showToast('Demo mode \u2014 open in Telegram to manage your agents', 'info', { duration: 2500 });
+    return { ok: true };
 }
 
 function enterDemoMode() {
@@ -159,7 +161,7 @@ function enterDemoMode() {
         banner = document.createElement('div');
         banner.id = 'demo-banner';
         banner.innerHTML = `
-            <span>🎮 Demo Mode — Sign up to save your data</span>
+            <span>🎮 Demo Mode — <a href="https://t.me/Ai_Agent_CRM_bot" style="color:var(--link);text-decoration:underline;">Open in Telegram</a> for the real thing</span>
             <button onclick="exitDemoMode()">Exit Demo</button>
         `;
         document.getElementById('app').prepend(banner);
@@ -2335,6 +2337,12 @@ function timeAgo(dateStr) {
             } catch (e) {
                 console.warn('Failed to load /me:', e.message);
             }
+        }
+
+        // No Telegram, no JWT — auto-enter demo mode for browser visitors
+        if (!user && !tg) {
+            enterDemoMode();
+            return;
         }
 
         // Check if invite is needed
