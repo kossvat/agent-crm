@@ -2327,8 +2327,9 @@ function timeAgo(dateStr) {
 // --- Init ---
 (async function init() {
     try {
-        // No Telegram WebApp — browser visitor → demo mode immediately
-        if (!tg && !jwtToken) {
+        // No Telegram WebApp context — browser visitor → demo mode immediately
+        // tg object exists even in browsers (script always loads), so check initData
+        if (!tg?.initData && !jwtToken) {
             enterDemoMode();
             return;
         }
@@ -2348,7 +2349,7 @@ function timeAgo(dateStr) {
         }
 
         // Auth failed and no Telegram — demo mode (e.g. expired JWT was cleared)
-        if (!user && !tg) {
+        if (!user && !tg?.initData) {
             enterDemoMode();
             return;
         }
