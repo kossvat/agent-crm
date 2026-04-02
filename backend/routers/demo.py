@@ -78,14 +78,14 @@ TASKS = [
 @router.get("/dashboard")
 def demo_dashboard():
     active = [t for t in TASKS if t["status"] != "done"]
-    done = [t for t in TASKS if t["status"] == "done"]
     total_cost = sum(a["daily_cost"] for a in AGENTS)
     return {
+        "agent_count": len(AGENTS),
+        "active_tasks": len(active),
+        "today_cost": round(total_cost, 2),
+        "unread_alerts": 0,
         "agents": AGENTS,
-        "tasks_active": len(active),
-        "tasks_done": len(done),
-        "total_cost": round(total_cost, 2),
-        "alerts_unread": 0,
+        "recent_alerts": [],
     }
 
 

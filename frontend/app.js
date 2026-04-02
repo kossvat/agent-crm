@@ -123,7 +123,7 @@ async function demoApi(path, options = {}) {
     // Read-only endpoints — fetch from backend demo API
     if (path.startsWith('/dashboard')) {
         try { return await fetch('/api/demo/dashboard').then(r => r.json()); } catch(_) {}
-        return { agents: DEMO_AGENTS, tasks_active: 4, tasks_done: 1, total_cost: 12.50, alerts_unread: 0 };
+        return { agent_count: 3, active_tasks: 4, today_cost: 12.50, unread_alerts: 0, agents: DEMO_AGENTS, recent_alerts: [] };
     }
     if (path.startsWith('/agents')) {
         try { return await fetch('/api/demo/agents').then(r => r.json()); } catch(_) {}
