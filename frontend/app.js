@@ -148,6 +148,8 @@ async function demoApi(path, options = {}) {
 
 function enterDemoMode() {
     isDemoMode = true;
+    jwtToken = null;
+    localStorage.removeItem('crm_jwt');
     currentUser = { id: 0, name: 'Demo User', onboarding_complete: true, is_superadmin: false };
     currentWorkspace = { id: 0, name: 'Demo Workspace', tier: 'pro', agent_limit: 10 };
     agents = [...DEMO_AGENTS];
@@ -2325,6 +2327,12 @@ function timeAgo(dateStr) {
 // --- Init ---
 (async function init() {
     try {
+        // No Telegram WebApp — browser visitor → demo mode immediately
+        if (!tg && !jwtToken) {
+            enterDemoMode();
+            return;
+        }
+
         // Authenticate first
         const user = await authenticateUser();
 
@@ -2339,7 +2347,7 @@ function timeAgo(dateStr) {
             }
         }
 
-        // No Telegram, no JWT — auto-enter demo mode for browser visitors
+        // Auth failed and no Telegram — demo mode (e.g. expired JWT was cleared)
         if (!user && !tg) {
             enterDemoMode();
             return;
