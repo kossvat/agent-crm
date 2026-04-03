@@ -147,6 +147,152 @@ async function demoApi(path, options = {}) {
 }
 
 function enterDemoMode() {
+    // Show landing page for browser visitors
+    hideOnboarding();
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = 'none';
+    document.getElementById('header').style.display = 'none';
+
+    const content = document.getElementById('content');
+    content.innerHTML = `
+    <div class="landing-page" id="landing-page">
+        <!-- Hero -->
+        <section class="landing-hero">
+            <div class="landing-hero-badge">✨ AI-Powered CRM</div>
+            <h1 class="landing-hero-title">Manage Your<br>AI Agent Team</h1>
+            <p class="landing-hero-subtitle">CRM built for AI-powered workflows. Track tasks, costs, and performance — all from Telegram.</p>
+            <div class="landing-hero-ctas">
+                <button class="landing-btn landing-btn-primary" onclick="startDemoMode()">🎮 Try Demo</button>
+                <a href="https://t.me/Ai_Agent_CRM_bot" class="landing-btn landing-btn-secondary" target="_blank">🤖 Open in Telegram</a>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section class="landing-section landing-features">
+            <h2 class="landing-section-title">Everything you need</h2>
+            <div class="landing-features-grid">
+                <div class="landing-feature-card">
+                    <div class="landing-feature-icon">📋</div>
+                    <h3>Kanban Board</h3>
+                    <p>Drag-and-drop task management for your agents</p>
+                </div>
+                <div class="landing-feature-card">
+                    <div class="landing-feature-icon">📊</div>
+                    <h3>Cost Tracking</h3>
+                    <p>Real-time spending analytics per agent and model</p>
+                </div>
+                <div class="landing-feature-card">
+                    <div class="landing-feature-icon">🤖</div>
+                    <h3>Multi-Agent</h3>
+                    <p>Manage researchers, coders, writers, analysts in one place</p>
+                </div>
+                <div class="landing-feature-card">
+                    <div class="landing-feature-icon">🔔</div>
+                    <h3>Smart Alerts</h3>
+                    <p>Get notified about budget overruns and task deadlines</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- How it works -->
+        <section class="landing-section landing-steps">
+            <h2 class="landing-section-title">How it works</h2>
+            <div class="landing-steps-row">
+                <div class="landing-step">
+                    <div class="landing-step-num">1</div>
+                    <p>Open the Telegram bot</p>
+                </div>
+                <div class="landing-step-arrow">→</div>
+                <div class="landing-step">
+                    <div class="landing-step-num">2</div>
+                    <p>Add your agents</p>
+                </div>
+                <div class="landing-step-arrow">→</div>
+                <div class="landing-step">
+                    <div class="landing-step-num">3</div>
+                    <p>Start managing</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Demo preview -->
+        <section class="landing-section landing-preview">
+            <h2 class="landing-section-title">See it in action</h2>
+            <div class="landing-preview-card">
+                <div class="landing-preview-header">
+                    <span class="landing-preview-dot" style="background:#f44336"></span>
+                    <span class="landing-preview-dot" style="background:#ff9800"></span>
+                    <span class="landing-preview-dot" style="background:#4caf50"></span>
+                    <span style="margin-left:8px;font-size:12px;color:var(--text-hint)">Agent CRM — Dashboard</span>
+                </div>
+                <div class="landing-preview-body">
+                    <div class="landing-preview-stats">
+                        <div class="landing-preview-stat">
+                            <div class="landing-preview-stat-val">4</div>
+                            <div class="landing-preview-stat-label">Agents</div>
+                        </div>
+                        <div class="landing-preview-stat">
+                            <div class="landing-preview-stat-val">12</div>
+                            <div class="landing-preview-stat-label">Tasks</div>
+                        </div>
+                        <div class="landing-preview-stat">
+                            <div class="landing-preview-stat-val">$2.40</div>
+                            <div class="landing-preview-stat-label">Today</div>
+                        </div>
+                    </div>
+                    <div class="landing-preview-agents">
+                        <div class="landing-preview-agent">
+                            <span class="landing-preview-avatar">🔬</span>
+                            <span>Researcher</span>
+                            <span class="landing-preview-tag landing-tag-active">3 active</span>
+                        </div>
+                        <div class="landing-preview-agent">
+                            <span class="landing-preview-avatar">💻</span>
+                            <span>Coder</span>
+                            <span class="landing-preview-tag landing-tag-active">2 active</span>
+                        </div>
+                        <div class="landing-preview-agent">
+                            <span class="landing-preview-avatar">✍️</span>
+                            <span>Writer</span>
+                            <span class="landing-preview-tag landing-tag-done">idle</span>
+                        </div>
+                        <div class="landing-preview-agent">
+                            <span class="landing-preview-avatar">📈</span>
+                            <span>Analyst</span>
+                            <span class="landing-preview-tag landing-tag-active">1 active</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer CTA -->
+        <section class="landing-section landing-footer-cta">
+            <h2 class="landing-section-title">Ready to try?</h2>
+            <div class="landing-hero-ctas">
+                <button class="landing-btn landing-btn-primary" onclick="startDemoMode()">🎮 Try Demo</button>
+                <a href="https://t.me/Ai_Agent_CRM_bot" class="landing-btn landing-btn-secondary" target="_blank">🤖 Open in Telegram</a>
+            </div>
+            <p class="landing-footer-note">Built for OpenClaw agents</p>
+        </section>
+    </div>
+    `;
+
+    // Animate sections on scroll
+    requestAnimationFrame(() => {
+        const sections = content.querySelectorAll('.landing-section');
+        if (!('IntersectionObserver' in window)) {
+            sections.forEach(s => s.classList.add('landing-visible'));
+            return;
+        }
+        const obs = new IntersectionObserver((entries) => {
+            entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('landing-visible'); obs.unobserve(e.target); } });
+        }, { threshold: 0.15 });
+        sections.forEach(s => obs.observe(s));
+    });
+}
+
+function startDemoMode() {
     isDemoMode = true;
     jwtToken = null;
     localStorage.removeItem('crm_jwt');
@@ -156,6 +302,7 @@ function enterDemoMode() {
     allTasks = [...DEMO_TASKS];
 
     hideOnboarding();
+    document.getElementById('header').style.display = '';
 
     // Inject demo banner
     let banner = document.getElementById('demo-banner');
@@ -170,7 +317,9 @@ function enterDemoMode() {
     }
     banner.style.display = '';
 
-    // Hide irrelevant nav items in demo
+    // Show nav, hide irrelevant items in demo
+    const nav = document.getElementById('bottom-nav');
+    nav.style.display = '';
     document.getElementById('nav-admin')?.style && (document.getElementById('nav-admin').style.display = 'none');
 
     const validRoutes = ['dashboard', 'kanban', 'agents', 'journal'];
@@ -199,7 +348,12 @@ function exitDemoMode() {
     // Restore all nav buttons
     document.querySelectorAll('.nav-btn').forEach(btn => btn.style.display = '');
 
-    showInviteScreen();
+    // Browser visitor → back to landing; Telegram user → invite screen
+    if (!tg?.initData) {
+        enterDemoMode();
+    } else {
+        showInviteScreen();
+    }
 }
 
 // --- API Client ---
@@ -325,7 +479,7 @@ function showInviteScreen(errorMsg = '') {
             </div>
             <button class="onboarding-btn" id="invite-submit-btn" onclick="submitInviteCode()">Continue</button>
             <div style="margin-top:16px;">
-                <button class="onboarding-btn demo-btn" onclick="enterDemoMode()" style="background:transparent; border:1px solid var(--border); color:var(--text-secondary); font-size:15px;">
+                <button class="onboarding-btn demo-btn" onclick="startDemoMode()" style="background:transparent; border:1px solid var(--border); color:var(--text-secondary); font-size:15px;">
                     🎮 Try Demo
                 </button>
             </div>
