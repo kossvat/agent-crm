@@ -137,13 +137,28 @@ async function demoApi(path, options = {}) {
     if (path.startsWith('/spending/current')) return { today: 12.50, month: 87.30, plan: 'Pro', window_hours: 5, usage: { all: { used: 0, limit: 44000, pct: 0 }, models: [] }, agents: DEMO_AGENTS.map(a => ({ agent_id: a.id, agent_name: a.name, cost: a.daily_cost })) };
     if (path.startsWith('/spending/timeline')) return { labels: [], data: [] };
     if (path.startsWith('/spending/sessions')) return [];
-    if (path.startsWith('/journal')) return DEMO_JOURNAL;
+    if (path.startsWith('/journal')) {
+        // Journal expects [{date, total_cost, entries: [{id, content, agent, source}]}]
+        const today = new Date().toISOString().slice(0, 10);
+        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        return [
+            { date: today, total_cost: 9.70, entries: [
+                { id: 301, content: 'Drafted 2 blog post outlines and published the weekly newsletter. Engagement up 15%.', agent: { name: 'Aria', emoji: '🔬' }, source: 'auto' },
+                { id: 302, content: 'Completed user funnel analysis — found 23% drop-off at onboarding step 3.', agent: { name: 'Pulse', emoji: '📊' }, source: 'auto' },
+            ]},
+            { date: yesterday, total_cost: 5.10, entries: [
+                { id: 303, content: 'Reviewed 4 PRs, found 2 critical SQL injection vulnerabilities. Both patched.', agent: { name: 'Nova', emoji: '💻' }, source: 'auto' },
+            ]},
+        ];
+    }
     if (path.startsWith('/alerts')) return [];
     if (path.startsWith('/crons')) return [];
     if (path.startsWith('/files')) return [];
+    if (path.startsWith('/agents/models')) return ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-35-20241022'];
+    if (path.startsWith('/commands/pending')) return [];
     // Write operations — block in demo mode
     showToast('Demo mode \u2014 open in Telegram to manage your agents', 'info', { duration: 2500 });
-    return { ok: true };
+    return null;
 }
 
 function enterDemoMode() {
