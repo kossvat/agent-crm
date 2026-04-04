@@ -284,7 +284,116 @@ def cmd_costs_push(args):
     print(f"✅ Ingested: {result.get('ingested', result)}")
 
 
+# --- Task commands ---
+
+def cmd_task_create(args):
+    """Create a task."""
+    payload = {
+        "title": args.title,
+        "description": args.description or "",
+        "priority": args.priority or "medium",
+        "status": "todo",
+    }
+    # Resolve agent name → id
+    if args.agent:
+        agent_id = _resolve_agent_id(args.agent)
+        if agent_id:
+            payload["agent_id"] = agent_id
+
+    resp = api("POST", "/api/tasks", json=payload)
+    if resp.status_code not in (200, 201):
+        die(resp)
+    task = resp.json()
+    print(f"✅ Task #{task['id']} created: {task['title']}")
+
+
+def cmd_task_list(args):
+    """List tasks."""
+    resp = api("GET", "/api/tasks")
+    if resp.status_code != 200:
+        die(resp)
+    tasks = resp.json()
+    if not tasks:
+        print("No tasks.")
+        return
+    print(f"{'#':<5} {'Status':<12} {'Priority':<8} {'Title':<40} {'Agent'}")
+    print("-" * 80)
+    for t in tasks:
+        agent_name = t.get("agent", {}).get("name", "") if t.get("agent") else ""
+        print(f"{t['id']:<5} {t['status']:<12} {t.get('priority',''):<8} {t['title'][:40]:<40} {agent_name}")
+
+
+def cmd_task_update(args):
+    """Update task status."""
+    payload = {}
+    if args.status:
+        payload["status"] = args.status
+    if args.title:
+        payload["title"] = args.title
+    if not payload:
+        print("Nothing to update. Use --status or --title.")
+        return
+    resp = api("PATCH", f"/api/tasks/{args.id}", json=payload)
+    if resp.status_code != 200:
+        die(resp)
+    print(f"✅ Task #{args.id} updated.")
+
+
+# --- Journal commands ---
+
+def cmd_journal_add(args):
+    """Add a journal entry."""
+    from datetime import date as _date
+    payload = {
+        "date": args.date or _date.today().isoformat(),
+        "content": args.content,
+        "source": "cli",
+    }
+    if args.agent:
+        agent_id = _resolve_agent_id(args.agent)
+        if agent_id:
+            payload["agent_id"] = agent_id
+
+    resp = api("POST", "/api/journal", json=payload)
+    if resp.status_code not in (200, 201):
+        die(resp)
+    entry = resp.json()
+    print(f"✅ Journal entry #{entry.get('id', '?')} added for {payload['date']}")
+
+
+# --- Alert commands ---
+
+def cmd_alert_send(args):
+    """Send an alert."""
+    payload = {
+        "message": args.message,
+        "type": args.type or "info",
+    }
+    if args.agent:
+        agent_id = _resolve_agent_id(args.agent)
+        if agent_id:
+            payload["agent_id"] = agent_id
+
+    resp = api("POST", "/api/alerts", json=payload)
+    if resp.status_code not in (200, 201):
+        die(resp)
+    print(f"✅ Alert sent: [{payload['type']}] {args.message}")
+
+
 # --- Helpers ---
+
+def _resolve_agent_id(name: str) -> Optional[int]:
+    """Look up agent by name, return ID."""
+    resp = api("GET", "/api/agents")
+    if resp.status_code != 200:
+        return None
+    agents = resp.json()
+    for a in agents:
+        if a["name"].lower() == name.lower():
+            return a["id"]
+    print(f"Warning: Agent '{name}' not found.")
+    return None
+
 
 def _find_agents_config() -> Optional[Path]:
     """Try common locations for agents config."""
@@ -347,6 +456,36 @@ def main():
     costs_push = costs_sub.add_parser("push", help="Push cost records")
     costs_push.add_argument("--file", "-f", help="Path to costs.json")
 
+    # task
+    task_parser = sub.add_parser("task", help="Manage tasks")
+    task_sub = task_parser.add_subparsers(dest="task_command")
+    task_sub.add_parser("list", help="List tasks")
+    task_create = task_sub.add_parser("create", help="Create a task")
+    task_create.add_argument("title", help="Task title")
+    task_create.add_argument("--description", "-d", default="", help="Task description")
+    task_create.add_argument("--agent", "-a", help="Assign to agent (by name)")
+    task_create.add_argument("--priority", "-p", choices=["low", "medium", "high"], default="medium")
+    task_update = task_sub.add_parser("update", help="Update a task")
+    task_update.add_argument("id", type=int, help="Task ID")
+    task_update.add_argument("--status", "-s", choices=["todo", "in_progress", "done"])
+    task_update.add_argument("--title", "-t")
+
+    # journal
+    journal_parser = sub.add_parser("journal", help="Journal entries")
+    journal_sub = journal_parser.add_subparsers(dest="journal_command")
+    journal_add = journal_sub.add_parser("add", help="Add journal entry")
+    journal_add.add_argument("content", help="Entry content")
+    journal_add.add_argument("--agent", "-a", help="Agent name")
+    journal_add.add_argument("--date", help="Date (YYYY-MM-DD, default: today)")
+
+    # alert
+    alert_parser = sub.add_parser("alert", help="Send alerts")
+    alert_sub = alert_parser.add_subparsers(dest="alert_command")
+    alert_send = alert_sub.add_parser("send", help="Send an alert")
+    alert_send.add_argument("message", help="Alert message")
+    alert_send.add_argument("--type", "-t", choices=["info", "warning", "error"], default="info")
+    alert_send.add_argument("--agent", "-a", help="Agent name")
+
     args = parser.parse_args()
 
     if args.command == "login":
@@ -370,6 +509,25 @@ def main():
             cmd_costs_push(args)
         else:
             costs_parser.print_help()
+    elif args.command == "task":
+        if args.task_command == "create":
+            cmd_task_create(args)
+        elif args.task_command == "list":
+            cmd_task_list(args)
+        elif args.task_command == "update":
+            cmd_task_update(args)
+        else:
+            task_parser.print_help()
+    elif args.command == "journal":
+        if args.journal_command == "add":
+            cmd_journal_add(args)
+        else:
+            journal_parser.print_help()
+    elif args.command == "alert":
+        if args.alert_command == "send":
+            cmd_alert_send(args)
+        else:
+            alert_parser.print_help()
     else:
         parser.print_help()
 
