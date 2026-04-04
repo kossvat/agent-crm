@@ -1541,7 +1541,7 @@ async function renderAgents(el) {
                 <div class="connect-header">
                     <span class="connect-title">⚡ CLI / API Access</span>
                 </div>
-                <p style="color:var(--text-dim);font-size:13px;margin:0 0 12px;">Connect any agent framework via CLI — no OpenClaw required.</p>
+                <p style="color:var(--text-dim);font-size:13px;margin:0 0 12px;">Connect any AI agent — just copy the message and send it to your agent.</p>
                 <div id="cli-key-status">
                     ${keyStatus.has_key
                         ? `<div class="connect-token-item">
@@ -1550,30 +1550,17 @@ async function renderAgents(el) {
                                 <span style="color:var(--success);font-size:12px;">✓ Active</span>
                             </div>
                             <div class="connect-token-actions">
-                                <button class="btn-sm btn-accent" onclick="regenerateApiKey()">🔄 Regenerate</button>
+                                <button class="btn-sm btn-accent" onclick="regenerateApiKey()">🔄 New Key</button>
                                 <button class="btn-sm" style="color:var(--danger);" onclick="revokeApiKey()">Revoke</button>
                             </div>
-                        </div>`
-                        : `<button class="btn-primary" onclick="generateApiKey()">🔑 Generate API Key</button>`
+                        </div>
+                        <button class="btn-primary" style="margin-top:10px;" onclick="copyAgentSetupMessage()">📋 Copy Setup Message for Agent</button>
+                        <p style="color:var(--text-dim);font-size:12px;margin-top:6px;">Paste this into your agent's chat — it will install and configure everything.</p>`
+                        : `<button class="btn-primary" onclick="generateApiKeyAndShowMessage()">🔑 Generate API Key</button>
+                        <p style="color:var(--text-dim);font-size:12px;margin-top:6px;">Your agent will use this key to sync data with CRM.</p>`
                     }
                 </div>
-                <div id="cli-instructions" class="hidden" style="margin-top:12px;">
-                    <div style="background:var(--bg-elevated);border-radius:10px;padding:12px;font-size:13px;">
-                        <div style="font-weight:600;margin-bottom:8px;">Quick Setup</div>
-                        <div style="margin-bottom:6px;"><strong>1.</strong> Install CLI:</div>
-                        <code class="cli-block" id="cli-install-cmd">pip install git+https://github.com/kossvat/agentcrm-cli.git</code>
-                        <button class="btn-sm btn-copy" onclick="copyCLI('cli-install-cmd', this)" style="margin-left:6px;">📋</button>
-                        <div style="margin:8px 0 6px;"><strong>2.</strong> Login:</div>
-                        <code class="cli-block" id="cli-login-cmd">agentcrm login</code>
-                        <button class="btn-sm btn-copy" onclick="copyCLI('cli-login-cmd', this)" style="margin-left:6px;">📋</button>
-                        <div style="margin:8px 0 6px;"><strong>3.</strong> Sync agents:</div>
-                        <code class="cli-block" id="cli-sync-cmd">agentcrm agents sync --config agents.json</code>
-                        <button class="btn-sm btn-copy" onclick="copyCLI('cli-sync-cmd', this)" style="margin-left:6px;">📋</button>
-                        <div style="margin-top:10px;">
-                            <a href="https://github.com/kossvat/agentcrm-cli" target="_blank" style="color:var(--accent);font-size:12px;">📖 Full documentation →</a>
-                        </div>
-                    </div>
-                </div>
+                <div id="cli-agent-message" class="hidden" style="margin-top:12px;"></div>
             </div>`;
     }
 
@@ -1873,31 +1860,87 @@ window.copyConnectUrl = async function(url, btnEl) {
 
 // --- CLI / API Key management ---
 
-window.generateApiKey = async function() {
-    if (!confirm('Generate a new API key? You\'ll need to copy it — it won\'t be shown again.')) return;
+window.generateApiKeyAndShowMessage = async function() {
+    if (!confirm('Generate an API key for your agent?')) return;
     try {
         const data = await api('/auth/apikey', { method: 'POST' });
-        const statusEl = document.getElementById('cli-key-status');
-        statusEl.innerHTML = `
-            <div class="connect-token-item" style="flex-direction:column;align-items:stretch;">
-                <div style="font-weight:600;color:var(--success);margin-bottom:8px;">✅ API Key Generated</div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <code class="connect-token-preview" id="new-api-key" style="flex:1;word-break:break-all;font-size:12px;">${data.api_key}</code>
-                    <button class="btn-sm btn-copy" onclick="copyCLI('new-api-key', this)">📋 Copy</button>
-                </div>
-                <p style="color:var(--warning);font-size:12px;margin-top:8px;">⚠️ Save this key now — it won't be shown again!</p>
-            </div>`;
-        // Show instructions
-        document.getElementById('cli-instructions')?.classList.remove('hidden');
+        _showAgentSetupMessage(data.api_key);
         if (tg) tg.HapticFeedback?.notificationOccurred('success');
     } catch (err) {
         showToast(err.message, 'error', { title: 'Failed to generate key' });
     }
 };
 
+window.generateApiKey = window.generateApiKeyAndShowMessage;
+
 window.regenerateApiKey = async function() {
     if (!confirm('Regenerate API key? The old key will stop working immediately.')) return;
-    await generateApiKey();
+    try {
+        const data = await api('/auth/apikey', { method: 'POST' });
+        _showAgentSetupMessage(data.api_key);
+        if (tg) tg.HapticFeedback?.notificationOccurred('success');
+    } catch (err) {
+        showToast(err.message, 'error', { title: 'Failed to regenerate' });
+    }
+};
+
+function _showAgentSetupMessage(apiKey) {
+    const crmUrl = window.location.origin || 'https://myaiagentscrm.com';
+    const msg = _buildAgentMessage(apiKey, crmUrl);
+    const msgEl = document.getElementById('cli-agent-message');
+    if (msgEl) {
+        msgEl.classList.remove('hidden');
+        msgEl.innerHTML = `
+            <div style="background:var(--bg-elevated);border-radius:10px;padding:12px;">
+                <div style="font-weight:600;margin-bottom:8px;color:var(--success);">✅ API Key Generated — Copy the message below</div>
+                <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;font-size:12px;font-family:monospace;white-space:pre-wrap;max-height:200px;overflow-y:auto;word-break:break-all;" id="agent-setup-msg">${msg.replace(/</g, '&lt;')}</div>
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                    <button class="btn-primary" style="flex:1;" onclick="copyCLI('agent-setup-msg', this)">📋 Copy Message</button>
+                </div>
+                <p style="color:var(--warning);font-size:12px;margin-top:8px;">⚠️ This key won't be shown again. Copy the message now and send it to your agent.</p>
+            </div>`;
+    }
+}
+
+function _buildAgentMessage(apiKey, crmUrl) {
+    return `Set up AgentCRM CLI to sync with my dashboard.
+
+1. Install: pip install git+https://github.com/kossvat/agentcrm-cli.git
+2. Create config file ~/.agentcrm/config.json:
+{
+  "url": "${crmUrl}",
+  "api_key": "${apiKey}"
+}
+3. Test: agentcrm status
+4. Sync your agents: agentcrm agents sync --config agents.json
+5. Sync your files: agentcrm files sync --dir <path-to-agent-files>
+
+API Key: ${apiKey}
+CRM URL: ${crmUrl}
+Docs: https://github.com/kossvat/agentcrm-cli`;
+}
+
+window.copyAgentSetupMessage = async function() {
+    // For existing key — regenerate to get raw key (since we only store hash)
+    if (!confirm('This will generate a NEW API key (old one stops working). Continue?')) return;
+    try {
+        const data = await api('/auth/apikey', { method: 'POST' });
+        const crmUrl = window.location.origin || 'https://myaiagentscrm.com';
+        const msg = _buildAgentMessage(data.api_key, crmUrl);
+        await navigator.clipboard.writeText(msg).catch(() => {
+            const input = document.createElement('textarea');
+            input.value = msg;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+        });
+        showToast('Setup message copied! Paste it to your agent.', 'success');
+        if (tg) tg.HapticFeedback?.notificationOccurred('success');
+        render(); // refresh to show new key status
+    } catch (err) {
+        showToast(err.message, 'error', { title: 'Failed' });
+    }
 };
 
 window.revokeApiKey = async function() {
