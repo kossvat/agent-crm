@@ -132,11 +132,13 @@ def get_current_user(request: Request) -> dict:
     # 1. API key auth (X-Api-Key header) — for CLI and external integrations
     api_key = request.headers.get("X-Api-Key", "")
     if api_key:
+        import hashlib
         from backend.database import SessionLocal
         from backend.models import Workspace
         _db = SessionLocal()
         try:
-            workspace = _db.query(Workspace).filter(Workspace.api_key == api_key).first()
+            key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+            workspace = _db.query(Workspace).filter(Workspace.api_key == key_hash).first()
             if not workspace:
                 raise HTTPException(status_code=401, detail="Invalid API key")
             return {

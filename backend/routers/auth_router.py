@@ -293,7 +293,9 @@ def generate_api_key(
 
     # Generate key: "crm_" prefix + 32 random bytes hex
     raw_key = f"crm_{secrets.token_hex(32)}"
-    workspace.api_key = raw_key
+    # Store only the SHA-256 hash — raw key is shown once and never stored
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    workspace.api_key = key_hash
     db.commit()
 
     return {
@@ -314,8 +316,9 @@ def get_api_key_status(
     if not workspace or not workspace.api_key:
         return {"has_key": False, "masked": None}
 
-    key = workspace.api_key
-    masked = f"{key[:8]}...{key[-4:]}"
+    # api_key is now a hash — show truncated hash as indicator
+    h = workspace.api_key
+    masked = f"{h[:8]}…{h[-4:]}"
     return {"has_key": True, "masked": masked}
 
 
