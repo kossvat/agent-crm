@@ -129,7 +129,30 @@ def get_current_user(request: Request) -> dict:
     FastAPI dependency — extract and validate user from request.
     Supports: JWT Bearer token, local agent X-Agent-Id, Telegram initData, DEV_MODE.
     """
-    # 1. JWT Bearer token
+    # 1. API key auth (X-Api-Key header) — for CLI and external integrations
+    api_key = request.headers.get("X-Api-Key", "")
+    if api_key:
+        from backend.database import SessionLocal
+        from backend.models import Workspace
+        _db = SessionLocal()
+        try:
+            workspace = _db.query(Workspace).filter(Workspace.api_key == api_key).first()
+            if not workspace:
+                raise HTTPException(status_code=401, detail="Invalid API key")
+            return {
+                "user_id": workspace.owner_id,
+                "workspace_id": workspace.id,
+                "is_owner": True,
+                "is_superadmin": False,
+                "full_access": True,
+                "agent_id": None,
+                "username": "api_key",
+                "auth_method": "api_key",
+            }
+        finally:
+            _db.close()
+
+    # 2. JWT Bearer token
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]

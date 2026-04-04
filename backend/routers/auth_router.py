@@ -9,6 +9,7 @@ from backend.models import User, Workspace, TierType, InviteCode
 from backend.auth import validate_init_data, create_access_token, get_current_user
 from backend.config import REQUIRE_INVITE
 
+import hashlib
 import secrets
 from datetime import datetime, timezone, timedelta
 
@@ -275,3 +276,59 @@ def check_invite(code: str, db: Session = Depends(get_db)):
     if invite:
         return {"valid": True, "remaining": invite.max_uses - invite.use_count}
     return {"valid": False, "remaining": 0}
+
+
+# --- API Key Management (for CLI / external integrations) ---
+
+@router.post("/apikey")
+def generate_api_key(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate a new API key for the current workspace. Replaces any existing key."""
+    ws_id = user.get("workspace_id", 1)
+    workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Generate key: "crm_" prefix + 32 random bytes hex
+    raw_key = f"crm_{secrets.token_hex(32)}"
+    workspace.api_key = raw_key
+    db.commit()
+
+    return {
+        "api_key": raw_key,
+        "workspace_id": ws_id,
+        "note": "Store this key securely — it won't be shown again in full.",
+    }
+
+
+@router.get("/apikey")
+def get_api_key_status(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check if an API key exists for current workspace (masked)."""
+    ws_id = user.get("workspace_id", 1)
+    workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
+    if not workspace or not workspace.api_key:
+        return {"has_key": False, "masked": None}
+
+    key = workspace.api_key
+    masked = f"{key[:8]}...{key[-4:]}"
+    return {"has_key": True, "masked": masked}
+
+
+@router.delete("/apikey")
+def revoke_api_key(
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Revoke the API key for current workspace."""
+    ws_id = user.get("workspace_id", 1)
+    workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    workspace.api_key = None
+    db.commit()
+    return {"ok": True}
