@@ -2278,3 +2278,16 @@ main {
     padding: 8px 14px;
     margin-bottom: 12px;
 }
+
+/* CLI Setup */
+.cli-block {
+    display: inline;
+    background: var(--bg-secondary, #1a1a2e);
+    color: var(--accent, #64b5f6);
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    user-select: all;
+    word-break: break-all;
+}

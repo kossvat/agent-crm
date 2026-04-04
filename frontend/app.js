@@ -1532,7 +1532,52 @@ async function renderAgents(el) {
             </div>` : ''}`;
     }
 
-    el.innerHTML = restartBanner + pendingInfo + limitInfo + connectSection + (agents.length
+    // CLI Setup section
+    let cliSection = '';
+    {
+        const keyStatus = await api('/auth/apikey').catch(() => ({ has_key: false }));
+        cliSection = `
+            <div class="card connect-section">
+                <div class="connect-header">
+                    <span class="connect-title">⚡ CLI / API Access</span>
+                </div>
+                <p style="color:var(--text-dim);font-size:13px;margin:0 0 12px;">Connect any agent framework via CLI — no OpenClaw required.</p>
+                <div id="cli-key-status">
+                    ${keyStatus.has_key
+                        ? `<div class="connect-token-item">
+                            <div class="connect-token-info">
+                                <code class="connect-token-preview">${keyStatus.masked}</code>
+                                <span style="color:var(--success);font-size:12px;">✓ Active</span>
+                            </div>
+                            <div class="connect-token-actions">
+                                <button class="btn-sm btn-accent" onclick="regenerateApiKey()">🔄 Regenerate</button>
+                                <button class="btn-sm" style="color:var(--danger);" onclick="revokeApiKey()">Revoke</button>
+                            </div>
+                        </div>`
+                        : `<button class="btn-primary" onclick="generateApiKey()">🔑 Generate API Key</button>`
+                    }
+                </div>
+                <div id="cli-instructions" class="hidden" style="margin-top:12px;">
+                    <div style="background:var(--bg-elevated);border-radius:10px;padding:12px;font-size:13px;">
+                        <div style="font-weight:600;margin-bottom:8px;">Quick Setup</div>
+                        <div style="margin-bottom:6px;"><strong>1.</strong> Install CLI:</div>
+                        <code class="cli-block" id="cli-install-cmd">pip install agentcrm</code>
+                        <button class="btn-sm btn-copy" onclick="copyCLI('cli-install-cmd', this)" style="margin-left:6px;">📋</button>
+                        <div style="margin:8px 0 6px;"><strong>2.</strong> Login:</div>
+                        <code class="cli-block" id="cli-login-cmd">agentcrm login</code>
+                        <button class="btn-sm btn-copy" onclick="copyCLI('cli-login-cmd', this)" style="margin-left:6px;">📋</button>
+                        <div style="margin:8px 0 6px;"><strong>3.</strong> Sync agents:</div>
+                        <code class="cli-block" id="cli-sync-cmd">agentcrm agents sync --config agents.json</code>
+                        <button class="btn-sm btn-copy" onclick="copyCLI('cli-sync-cmd', this)" style="margin-left:6px;">📋</button>
+                        <div style="margin-top:10px;">
+                            <a href="https://github.com/kossvat/agentcrm-cli" target="_blank" style="color:var(--accent);font-size:12px;">📖 Full documentation →</a>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    el.innerHTML = restartBanner + pendingInfo + limitInfo + connectSection + cliSection + (agents.length
         ? '<div class="agents-grid">' + agents.map(a => `<div class="card agent-card-full">
             <div class="agent-header">
                 <div class="agent-emoji">${a.emoji}</div>
@@ -1822,6 +1867,68 @@ window.copyConnectUrl = async function(url, btnEl) {
         document.body.removeChild(input);
         const orig = btnEl.textContent;
         btnEl.textContent = '✅';
+        setTimeout(() => { btnEl.textContent = orig; }, 1500);
+    }
+};
+
+// --- CLI / API Key management ---
+
+window.generateApiKey = async function() {
+    if (!confirm('Generate a new API key? You\'ll need to copy it — it won\'t be shown again.')) return;
+    try {
+        const data = await api('/auth/apikey', { method: 'POST' });
+        const statusEl = document.getElementById('cli-key-status');
+        statusEl.innerHTML = `
+            <div class="connect-token-item" style="flex-direction:column;align-items:stretch;">
+                <div style="font-weight:600;color:var(--success);margin-bottom:8px;">✅ API Key Generated</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <code class="connect-token-preview" id="new-api-key" style="flex:1;word-break:break-all;font-size:12px;">${data.api_key}</code>
+                    <button class="btn-sm btn-copy" onclick="copyCLI('new-api-key', this)">📋 Copy</button>
+                </div>
+                <p style="color:var(--warning);font-size:12px;margin-top:8px;">⚠️ Save this key now — it won't be shown again!</p>
+            </div>`;
+        // Show instructions
+        document.getElementById('cli-instructions')?.classList.remove('hidden');
+        if (tg) tg.HapticFeedback?.notificationOccurred('success');
+    } catch (err) {
+        showToast(err.message, 'error', { title: 'Failed to generate key' });
+    }
+};
+
+window.regenerateApiKey = async function() {
+    if (!confirm('Regenerate API key? The old key will stop working immediately.')) return;
+    await generateApiKey();
+};
+
+window.revokeApiKey = async function() {
+    if (!confirm('Revoke API key? CLI access will stop working.')) return;
+    try {
+        await api('/auth/apikey', { method: 'DELETE' });
+        showToast('API key revoked', 'info');
+        if (tg) tg.HapticFeedback?.notificationOccurred('warning');
+        render();
+    } catch (err) {
+        showToast(err.message, 'error', { title: 'Failed to revoke' });
+    }
+};
+
+window.copyCLI = async function(elementId, btnEl) {
+    const el = document.getElementById(elementId);
+    const text = el?.textContent || '';
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch {
+        const input = document.createElement('input');
+        input.value = text;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+    }
+    if (btnEl) {
+        const orig = btnEl.textContent;
+        btnEl.textContent = '✅';
+        if (tg) tg.HapticFeedback?.impactOccurred('light');
         setTimeout(() => { btnEl.textContent = orig; }, 1500);
     }
 };
