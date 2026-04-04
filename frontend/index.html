@@ -11,7 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260403a">
+    <link rel="stylesheet" href="style.css?v=20260404a">
 </head>
 <body>
     <div id="offline-banner" class="offline-banner hidden">
@@ -69,6 +69,21 @@
     <!-- Onboarding Wizard -->
     <div id="onboarding-overlay" class="onboarding-overlay hidden">
         <div id="onboarding-content" class="onboarding-content"></div>
+    </div>
+
+    <!-- Task Preview Modal -->
+    <div id="preview-overlay" class="modal-overlay hidden">
+        <div class="modal preview-modal">
+            <div class="modal-header">
+                <h2 id="preview-title">Task Details</h2>
+                <button class="modal-close" onclick="closePreview()">&times;</button>
+            </div>
+            <div class="preview-body" id="preview-body"></div>
+            <div class="preview-actions">
+                <button class="btn btn-primary preview-edit-btn" id="preview-edit-btn" onclick="previewToEdit()">✏️ Edit</button>
+                <button class="btn btn-close-preview" onclick="closePreview()">Close</button>
+            </div>
+        </div>
     </div>
 
     <!-- Task Modal -->
@@ -140,6 +155,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=20260403b"></script>
+    <script src="app.js?v=20260404a"></script>
 </body>
 </html>

@@ -1312,7 +1312,7 @@ async function renderKanban(el) {
                 if (tg) tg.HapticFeedback?.impactOccurred('light');
                 return;
             }
-            openTaskModal(parseInt(card.dataset.id));
+            openTaskPreview(parseInt(card.dataset.id));
         });
     });
 
@@ -1995,6 +1995,81 @@ function alertCardHTML(a) {
 window.markAlertRead = async function(id) {
     try { await api(`/alerts/${id}/read`, { method: 'PATCH' }); render(); } catch(e) {}
 };
+
+// --- Task Preview ---
+let previewTaskId = null;
+
+window.openTaskPreview = async function(taskId) {
+    previewTaskId = taskId;
+    const overlay = document.getElementById('preview-overlay');
+    const body = document.getElementById('preview-body');
+
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-hint)">Loading...</div>';
+    overlay.classList.remove('hidden');
+
+    try {
+        const task = await api(`/tasks/${taskId}`);
+        const agentStr = task.agent ? `${task.agent.emoji} ${task.agent.name}` : 'Unassigned';
+        const statusLabel = { todo: 'Todo', in_progress: 'In Progress', done: 'Done' }[task.status] || task.status;
+        const priorityLabel = { low: 'Low', medium: 'Medium', high: 'High' }[task.priority] || task.priority;
+        const catObj = CATEGORIES.find(c => c.id === task.category);
+        const catStr = catObj ? `${catObj.icon} ${catObj.label}` : (task.category || '—');
+        const dlStr = task.deadline
+            ? new Date(task.deadline).toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : '—';
+
+        document.getElementById('preview-title').textContent = task.title;
+
+        body.innerHTML = `
+            ${task.description ? `<div class="preview-description">${escapeHtml(task.description)}</div>` : ''}
+            <div class="preview-fields">
+                <div class="preview-field">
+                    <span class="preview-label">Status</span>
+                    <span class="preview-value status-${task.status}">${statusLabel}</span>
+                </div>
+                <div class="preview-field">
+                    <span class="preview-label">Priority</span>
+                    <span class="preview-value priority-${task.priority}">${priorityLabel}</span>
+                </div>
+                <div class="preview-field">
+                    <span class="preview-label">Agent</span>
+                    <span class="preview-value">${agentStr}</span>
+                </div>
+                <div class="preview-field">
+                    <span class="preview-label">Category</span>
+                    <span class="preview-value">${catStr}</span>
+                </div>
+                <div class="preview-field">
+                    <span class="preview-label">Deadline</span>
+                    <span class="preview-value">${dlStr}</span>
+                </div>
+                <div class="preview-field">
+                    <span class="preview-label">Created</span>
+                    <span class="preview-value">${timeAgo(task.created)}</span>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        body.innerHTML = `<div style="text-align:center;padding:20px;color:var(--danger)">Failed to load task</div>`;
+    }
+
+    if (tg) tg.HapticFeedback?.impactOccurred('light');
+};
+
+window.closePreview = function() {
+    document.getElementById('preview-overlay').classList.add('hidden');
+    previewTaskId = null;
+};
+
+window.previewToEdit = function() {
+    const id = previewTaskId;
+    closePreview();
+    if (id) openTaskModal(id);
+};
+
+document.getElementById('preview-overlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closePreview();
+});
 
 // --- Task Modal ---
 window.openTaskModal = async function(taskId = null) {
