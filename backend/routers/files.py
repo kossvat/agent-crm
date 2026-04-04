@@ -25,10 +25,10 @@ VIEWABLE_FILES = ["SOUL.md", "IDENTITY.md", "MEMORY.md"]
 # Workspace directory mapping for the LOCAL owner (workspace_id=1).
 # Maps agent session_key to their workspace folder name.
 LOCAL_WORKSPACE_MAP = {
-    "caramel": "workspace",
+    "main": "workspace",
     "sixteen": "workspace-sixteen",
     "career": "workspace-career",
-    "vibe": "workspace-vibe",
+    "social": "workspace-vibe",
 }
 
 
