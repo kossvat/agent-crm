@@ -1561,7 +1561,7 @@ async function renderAgents(el) {
                     <div style="background:var(--bg-elevated);border-radius:10px;padding:12px;font-size:13px;">
                         <div style="font-weight:600;margin-bottom:8px;">Quick Setup</div>
                         <div style="margin-bottom:6px;"><strong>1.</strong> Install CLI:</div>
-                        <code class="cli-block" id="cli-install-cmd">pip install agentcrm</code>
+                        <code class="cli-block" id="cli-install-cmd">pip install git+https://github.com/kossvat/agentcrm-cli.git</code>
                         <button class="btn-sm btn-copy" onclick="copyCLI('cli-install-cmd', this)" style="margin-left:6px;">📋</button>
                         <div style="margin:8px 0 6px;"><strong>2.</strong> Login:</div>
                         <code class="cli-block" id="cli-login-cmd">agentcrm login</code>
