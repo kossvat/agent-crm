@@ -1,4 +1,9 @@
-"""File viewer for agent workspace files — filesystem first, DB fallback."""
+"""File viewer for agent workspace files — workspace-isolated.
+
+Local filesystem is only used for workspace_id=1 (the host owner).
+All other workspaces read from the database (synced via /files/sync).
+Agent names are never hardcoded — they come from the user's workspace.
+"""
 
 from pathlib import Path
 from typing import Optional
@@ -14,57 +19,88 @@ from backend.models import Agent, AgentFile
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
-AGENT_FILES = {
-    "Caramel": {"workspace": "workspace", "files": ["SOUL.md", "IDENTITY.md", "MEMORY.md"]},
-    "Sixteen": {"workspace": "workspace-sixteen", "files": ["SOUL.md", "IDENTITY.md", "MEMORY.md"]},
-    "Rex": {"workspace": "workspace-career", "files": ["SOUL.md", "IDENTITY.md", "MEMORY.md"]},
-    "Vibe": {"workspace": "workspace-vibe", "files": ["SOUL.md", "IDENTITY.md", "MEMORY.md"]},
+# Viewable filenames (whitelist)
+VIEWABLE_FILES = ["SOUL.md", "IDENTITY.md", "MEMORY.md"]
+
+# Workspace directory mapping for the LOCAL owner (workspace_id=1).
+# Maps agent session_key to their workspace folder name.
+LOCAL_WORKSPACE_MAP = {
+    "caramel": "workspace",
+    "sixteen": "workspace-sixteen",
+    "career": "workspace-career",
+    "vibe": "workspace-vibe",
 }
 
 
-def _has_local_filesystem() -> bool:
-    """Check if the local OpenClaw directory exists."""
-    return Path(OPENCLAW_DIR).exists()
+def _is_local_owner(workspace_id: int) -> bool:
+    """Only workspace_id=1 may use the local filesystem."""
+    return workspace_id == 1 and Path(OPENCLAW_DIR).exists()
 
 
-def _list_files_from_fs() -> list[dict]:
-    """Read file listing from local filesystem."""
-    openclaw_path = Path(OPENCLAW_DIR)
-    result = []
-    for agent_name, cfg in AGENT_FILES.items():
-        ws_dir = openclaw_path / cfg["workspace"]
-        for filename in cfg["files"]:
-            filepath = ws_dir / filename
-            result.append({
-                "agent": agent_name,
-                "filename": filename,
-                "exists": filepath.exists(),
-                "size": filepath.stat().st_size if filepath.exists() else 0,
-            })
-    return result
+def _list_files_local(workspace_id: int) -> list[dict]:
+    """List files from local filesystem for the owner workspace."""
+    db: Session = SessionLocal()
+    try:
+        agents = (
+            db.query(Agent)
+            .filter(Agent.workspace_id == workspace_id)
+            .order_by(Agent.name)
+            .all()
+        )
+        openclaw_path = Path(OPENCLAW_DIR)
+        result = []
+        for agent in agents:
+            # Try to find workspace dir by session_key
+            ws_folder = LOCAL_WORKSPACE_MAP.get(
+                (agent.session_key or "").lower()
+            )
+            for filename in VIEWABLE_FILES:
+                exists = False
+                size = 0
+                if ws_folder:
+                    filepath = openclaw_path / ws_folder / filename
+                    if filepath.exists():
+                        exists = True
+                        size = filepath.stat().st_size
+                result.append({
+                    "agent": agent.name,
+                    "filename": filename,
+                    "exists": exists,
+                    "size": size,
+                })
+        return result
+    finally:
+        db.close()
 
 
 def _list_files_from_db(workspace_id: int) -> list[dict]:
-    """Read file listing from database."""
+    """List files from database for remote workspaces."""
     db: Session = SessionLocal()
     try:
+        # Get all agents in this workspace
+        agents = (
+            db.query(Agent)
+            .filter(Agent.workspace_id == workspace_id)
+            .order_by(Agent.name)
+            .all()
+        )
+        # Get synced files
         rows = (
             db.query(AgentFile, Agent.name)
             .join(Agent, AgentFile.agent_id == Agent.id)
             .filter(AgentFile.workspace_id == workspace_id)
             .all()
         )
-        # Build lookup of what we have in DB
         db_files = {}
         for af, agent_name in rows:
             db_files[(agent_name, af.filename)] = af
 
         result = []
-        for agent_name, cfg in AGENT_FILES.items():
-            for filename in cfg["files"]:
-                af = db_files.get((agent_name, filename))
+        for agent in agents:
+            for filename in VIEWABLE_FILES:
+                af = db_files.get((agent.name, filename))
                 result.append({
-                    "agent": agent_name,
+                    "agent": agent.name,
                     "filename": filename,
                     "exists": af is not None and bool(af.content),
                     "size": af.size if af else 0,
@@ -74,44 +110,51 @@ def _list_files_from_db(workspace_id: int) -> list[dict]:
         db.close()
 
 
-def _read_file_from_fs(agent: str, filename: str) -> Optional[dict]:
-    """Try to read file from local filesystem. Returns None if not available."""
-    openclaw_path = Path(OPENCLAW_DIR)
-    if not openclaw_path.exists():
-        return None
-
-    cfg = AGENT_FILES.get(agent)
-    if not cfg:
-        return None
-
-    filepath = openclaw_path / cfg["workspace"] / filename
-    if not filepath.exists():
-        return None
-
-    # Prevent path traversal
+def _read_file_local(agent_name: str, filename: str, workspace_id: int) -> Optional[dict]:
+    """Read from local filesystem (owner only)."""
+    db: Session = SessionLocal()
     try:
-        filepath.resolve().relative_to(Path(OPENCLAW_DIR).resolve())
-    except ValueError:
-        return None
+        agent = (
+            db.query(Agent)
+            .filter(Agent.name == agent_name, Agent.workspace_id == workspace_id)
+            .first()
+        )
+        if not agent:
+            return None
+        ws_folder = LOCAL_WORKSPACE_MAP.get(
+            (agent.session_key or "").lower()
+        )
+        if not ws_folder:
+            return None
+        openclaw_path = Path(OPENCLAW_DIR)
+        filepath = openclaw_path / ws_folder / filename
+        if not filepath.exists():
+            return None
+        # Prevent path traversal
+        try:
+            filepath.resolve().relative_to(openclaw_path.resolve())
+        except ValueError:
+            return None
+        content = filepath.read_text(encoding="utf-8", errors="replace")
+        return {
+            "agent": agent_name,
+            "filename": filename,
+            "content": content,
+            "size": len(content),
+        }
+    finally:
+        db.close()
 
-    content = filepath.read_text(encoding="utf-8", errors="replace")
-    return {
-        "agent": agent,
-        "filename": filename,
-        "content": content,
-        "size": len(content),
-    }
 
-
-def _read_file_from_db(agent: str, filename: str, workspace_id: int) -> Optional[dict]:
-    """Try to read file from database. Returns None if not found."""
+def _read_file_from_db(agent_name: str, filename: str, workspace_id: int) -> Optional[dict]:
+    """Read from database."""
     db: Session = SessionLocal()
     try:
         row = (
             db.query(AgentFile)
             .join(Agent, AgentFile.agent_id == Agent.id)
             .filter(
-                Agent.name == agent,
+                Agent.name == agent_name,
                 AgentFile.filename == filename,
                 AgentFile.workspace_id == workspace_id,
             )
@@ -120,7 +163,7 @@ def _read_file_from_db(agent: str, filename: str, workspace_id: int) -> Optional
         if not row:
             return None
         return {
-            "agent": agent,
+            "agent": agent_name,
             "filename": filename,
             "content": row.content or "",
             "size": row.size,
@@ -131,28 +174,29 @@ def _read_file_from_db(agent: str, filename: str, workspace_id: int) -> Optional
 
 @router.get("")
 def list_files(user: dict = Depends(get_current_user)):
-    """List all viewable files grouped by agent."""
-    if _has_local_filesystem():
-        return _list_files_from_fs()
-    return _list_files_from_db(user.get("workspace_id", 1))
+    """List all viewable files for the current user's workspace."""
+    ws_id = user.get("workspace_id", 1)
+    if _is_local_owner(ws_id):
+        return _list_files_local(ws_id)
+    return _list_files_from_db(ws_id)
 
 
 @router.get("/{agent}/{filename}")
 def read_file(agent: str, filename: str, user: dict = Depends(get_current_user)):
     """Read a whitelisted file (markdown content)."""
-    cfg = AGENT_FILES.get(agent)
-    if not cfg:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent}' not found")
-    if filename not in cfg["files"]:
+    if filename not in VIEWABLE_FILES:
         raise HTTPException(status_code=403, detail=f"File '{filename}' not in whitelist")
 
-    # Try filesystem first
-    result = _read_file_from_fs(agent, filename)
-    if result:
-        return result
+    ws_id = user.get("workspace_id", 1)
 
-    # Fallback to DB
-    result = _read_file_from_db(agent, filename, user.get("workspace_id", 1))
+    # Local filesystem for owner only
+    if _is_local_owner(ws_id):
+        result = _read_file_local(agent, filename, ws_id)
+        if result:
+            return result
+
+    # Database for everyone (including owner fallback)
+    result = _read_file_from_db(agent, filename, ws_id)
     if result:
         return result
 
