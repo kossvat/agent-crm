@@ -1906,14 +1906,23 @@ function _buildAgentMessage(apiKey, crmUrl) {
     return `Set up AgentCRM CLI to sync with my dashboard.
 
 1. Install: pip install git+https://github.com/kossvat/agentcrm-cli.git
-2. Create config file ~/.agentcrm/config.json:
+2. Create config file ~/.agentcrm/config.json with permissions 600:
 {
   "url": "${crmUrl}",
   "api_key": "${apiKey}"
 }
 3. Test: agentcrm status
-4. Sync your agents: agentcrm agents sync --config agents.json
-5. Sync your files: agentcrm files sync --dir <path-to-agent-files>
+
+Quick start:
+  agentcrm agents sync --config agents.json   # sync agent list
+  agentcrm files sync --dir <agent-files>      # sync SOUL.md etc.
+  agentcrm costs auto --source openclaw        # auto-collect spending
+  agentcrm commands poll --apply               # apply CRM commands (model change, restart)
+  agentcrm task list                           # view tasks
+  agentcrm journal add "Done X"                # add journal entry
+
+Set up a cron for automatic sync (every hour):
+  echo '5 * * * * cd ~ && agentcrm costs auto >> /tmp/agentcrm-costs.log 2>&1' | crontab -
 
 API Key: ${apiKey}
 CRM URL: ${crmUrl}
