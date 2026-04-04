@@ -284,6 +284,244 @@ def cmd_costs_push(args):
     print(f"✅ Ingested: {result.get('ingested', result)}")
 
 
+# --- Real pricing for recalculation ---
+# OpenClaw reports Vercel AI Gateway prices (~3x lower than actual Anthropic billing).
+# We recalculate from raw token counts.
+
+_MODEL_PRICING = {
+    "claude-opus-4-6": {"input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75},
+    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75},
+    "claude-haiku-3-5": {"input": 0.8, "output": 4.0, "cache_read": 0.08, "cache_write": 1.0},
+    "gpt-4o": {"input": 2.5, "output": 10.0, "cache_read": 1.25, "cache_write": 2.5},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.6, "cache_read": 0.075, "cache_write": 0.15},
+}
+
+# Default model per OpenClaw agent (when JSONL says "delivery-mirror")
+_AGENT_MODEL_DEFAULTS = {
+    "main": "claude-sonnet-4-6",
+    "sixteen": "claude-opus-4-6",
+    "social": "claude-sonnet-4-6",
+    "career": "claude-sonnet-4-6",
+    "vibe": "claude-sonnet-4-6",
+    "mira": "claude-sonnet-4-6",
+    "luna": "claude-sonnet-4-6",
+    "rex": "claude-sonnet-4-6",
+}
+
+# OpenClaw agent dir name → CRM display name mapping
+# Override for agents whose directory name doesn't match their CRM name
+_AGENT_NAME_MAP = {
+    "main": "Caramel",
+    "social": "Vibe",
+    "career": "Rex",
+}
+
+
+def _recalc_cost(input_t, output_t, cache_read, cache_write, model, agent=""):
+    """Recalculate cost from raw tokens using real Anthropic pricing."""
+    resolved = model
+    if not resolved or resolved in ("delivery-mirror", "unknown", ""):
+        resolved = _AGENT_MODEL_DEFAULTS.get(agent, "claude-sonnet-4-6")
+    # Strip provider prefix (e.g. "anthropic/claude-opus-4-6" → "claude-opus-4-6")
+    if "/" in resolved:
+        resolved = resolved.split("/", 1)[1]
+    pricing = _MODEL_PRICING.get(resolved, _MODEL_PRICING.get("claude-sonnet-4-6"))
+    return (
+        (input_t or 0) * pricing["input"] / 1_000_000
+        + (output_t or 0) * pricing["output"] / 1_000_000
+        + (cache_read or 0) * pricing["cache_read"] / 1_000_000
+        + (cache_write or 0) * pricing["cache_write"] / 1_000_000
+    )
+
+
+def _parse_openclaw_sessions(agents_dir: Path, since_ts: Optional[str] = None):
+    """Parse OpenClaw JSONL session logs, aggregate by agent+date+model.
+    
+    Returns list of dicts: {agent_name, date, model, input_tokens, output_tokens, cost_usd}
+    """
+    from datetime import datetime as _dt
+    from collections import defaultdict
+
+    # Aggregation key: (agent_name, date_str, model)
+    agg = defaultdict(lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0})
+
+    since_dt = None
+    if since_ts:
+        try:
+            since_dt = _dt.fromisoformat(since_ts.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            pass
+
+    agent_dirs = [d for d in agents_dir.iterdir() if d.is_dir()]
+    sessions_scanned = 0
+    messages_scanned = 0
+
+    for agent_dir in agent_dirs:
+        agent_name = agent_dir.name
+        sessions_dir = agent_dir / "sessions"
+        if not sessions_dir.exists():
+            continue
+
+        for jsonl_file in sessions_dir.glob("*.jsonl"):
+            # Skip deleted/reset files unless they have usage data
+            fname = jsonl_file.name
+            if ".deleted." in fname or ".reset." in fname:
+                continue
+
+            sessions_scanned += 1
+            try:
+                with open(jsonl_file, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+
+                        if entry.get("type") != "message":
+                            continue
+                        msg = entry.get("message", {})
+                        usage = msg.get("usage")
+                        if not usage:
+                            continue
+
+                        # Check timestamp filter
+                        ts = entry.get("timestamp", "")
+                        if since_dt and ts:
+                            try:
+                                entry_dt = _dt.fromisoformat(ts.replace("Z", "+00:00"))
+                                if entry_dt < since_dt:
+                                    continue
+                            except (ValueError, AttributeError):
+                                pass
+
+                        # Extract model
+                        model = msg.get("model", "")
+
+                        # Extract date from timestamp
+                        date_str = ts[:10] if len(ts) >= 10 else _dt.now().strftime("%Y-%m-%d")
+
+                        key = (agent_name, date_str, model)
+                        agg[key]["input"] += usage.get("input", 0)
+                        agg[key]["output"] += usage.get("output", 0)
+                        agg[key]["cache_read"] += usage.get("cacheRead", 0)
+                        agg[key]["cache_write"] += usage.get("cacheWrite", 0)
+                        messages_scanned += 1
+            except (PermissionError, OSError) as e:
+                print(f"  ⚠ Cannot read {jsonl_file.name}: {e}")
+
+    print(f"  Scanned {sessions_scanned} sessions, {messages_scanned} messages")
+
+    # Build records with recalculated costs, skip zero-usage entries
+    records = []
+    for (agent_name, date_str, model), tokens in agg.items():
+        total_tokens = tokens["input"] + tokens["output"] + tokens["cache_read"] + tokens["cache_write"]
+        if total_tokens == 0:
+            continue
+
+        cost = _recalc_cost(
+            tokens["input"], tokens["output"],
+            tokens["cache_read"], tokens["cache_write"],
+            model, agent_name,
+        )
+        resolved_model = model
+        if not resolved_model or resolved_model in ("delivery-mirror", "unknown", ""):
+            resolved_model = _AGENT_MODEL_DEFAULTS.get(agent_name, "unknown")
+        if "/" in resolved_model:
+            resolved_model = resolved_model.split("/", 1)[1]
+
+        display_name = _AGENT_NAME_MAP.get(agent_name, agent_name.capitalize())
+        records.append({
+            "agent_name": display_name,
+            "date": date_str,
+            "model": resolved_model,
+            "input_tokens": tokens["input"] + tokens["cache_read"],
+            "output_tokens": tokens["output"] + tokens["cache_write"],
+            "cost_usd": round(cost, 4),
+        })
+
+    return records
+
+
+def cmd_costs_auto(args):
+    """Auto-collect costs from local agent framework logs."""
+    from datetime import datetime as _dt
+
+    source = args.source or "openclaw"
+    state_file = CONFIG_DIR / "costs_sync_state.json"
+
+    # Load last sync state
+    state = {}
+    if state_file.exists():
+        state = json.loads(state_file.read_text())
+
+    last_sync = state.get("last_sync")
+    if args.full:
+        last_sync = None
+        print("Full rescan mode (ignoring last sync timestamp)")
+
+    if source == "openclaw":
+        # Auto-detect OpenClaw agents directory
+        agents_dir = Path(args.path) if args.path else Path.home() / ".openclaw" / "agents"
+        if not agents_dir.exists():
+            print(f"Error: OpenClaw agents directory not found at {agents_dir}")
+            print("Use --path to specify the directory.")
+            sys.exit(1)
+
+        print(f"📊 Scanning OpenClaw logs at {agents_dir}")
+        if last_sync:
+            print(f"  Since: {last_sync}")
+        else:
+            print("  Full scan (no previous sync)")
+
+        records = _parse_openclaw_sessions(agents_dir, since_ts=last_sync)
+
+        if not records:
+            print("No cost data found.")
+            return
+
+        # Show summary before pushing
+        total_cost = sum(r["cost_usd"] for r in records)
+        agents_seen = set(r["agent_name"] for r in records)
+        dates_seen = set(r["date"] for r in records)
+        print(f"\n  Found {len(records)} records:")
+        print(f"  Agents: {', '.join(sorted(agents_seen))}")
+        print(f"  Dates: {min(dates_seen)} → {max(dates_seen)}")
+        print(f"  Total cost: ${total_cost:.2f}")
+
+        if args.dry_run:
+            print("\n[DRY RUN] Would push these records:")
+            for r in sorted(records, key=lambda x: (x["date"], x["agent_name"])):
+                print(f"  {r['date']} | {r['agent_name']:<10} | {r['model']:<25} | ${r['cost_usd']:>8.4f}")
+            return
+
+        # Push to CRM
+        print(f"\nPushing {len(records)} records to CRM...")
+        resp = api("POST", "/api/costs", json={"records": records})
+        if resp.status_code not in (200, 201):
+            die(resp)
+        result = resp.json()
+        print(f"✅ Ingested: {result.get('ingested', 0)}, Updated: {result.get('updated', 0)}")
+        if result.get("created_agents"):
+            print(f"  New agents: {', '.join(result['created_agents'])}")
+
+        # Save sync state
+        from datetime import timezone as _tz
+        state["last_sync"] = _dt.now(_tz.utc).isoformat()
+        state["last_records"] = len(records)
+        state["last_cost"] = total_cost
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps(state, indent=2))
+        print(f"  Sync state saved to {state_file}")
+
+    else:
+        print(f"Error: Unknown source '{source}'. Supported: openclaw")
+        print("More sources coming: litellm, langchain, openai")
+        sys.exit(1)
+
+
 # --- Task commands ---
 
 def cmd_task_create(args):
@@ -453,8 +691,13 @@ def main():
     # costs
     costs_parser = sub.add_parser("costs", help="Push spending data")
     costs_sub = costs_parser.add_subparsers(dest="costs_command")
-    costs_push = costs_sub.add_parser("push", help="Push cost records")
+    costs_push = costs_sub.add_parser("push", help="Push cost records from JSON file")
     costs_push.add_argument("--file", "-f", help="Path to costs.json")
+    costs_auto = costs_sub.add_parser("auto", help="Auto-collect costs from agent framework logs")
+    costs_auto.add_argument("--source", "-s", default="openclaw", help="Source: openclaw (default), litellm, langchain")
+    costs_auto.add_argument("--path", "-p", help="Path to agents directory (auto-detected for openclaw)")
+    costs_auto.add_argument("--full", action="store_true", help="Full rescan (ignore last sync)")
+    costs_auto.add_argument("--dry-run", action="store_true", help="Show what would be pushed without sending")
 
     # task
     task_parser = sub.add_parser("task", help="Manage tasks")
@@ -507,6 +750,8 @@ def main():
     elif args.command == "costs":
         if args.costs_command == "push":
             cmd_costs_push(args)
+        elif args.costs_command == "auto":
+            cmd_costs_auto(args)
         else:
             costs_parser.print_help()
     elif args.command == "task":
