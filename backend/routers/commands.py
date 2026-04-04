@@ -207,12 +207,13 @@ def ack_command(
     command_id: int,
     data: AckRequest,
     request: Request,
+    user: dict = Depends(get_current_user),
 ):
     """Acknowledge a command (mark as applied or failed).
 
-    Auth: workspace token (Bearer header).
+    Auth: API key, JWT, or workspace token.
     """
-    ws_id = _get_workspace_id(request)
+    ws_id = user.get("workspace_id", 1)
 
     if data.status not in ("applied", "failed"):
         raise HTTPException(status_code=400, detail="status must be 'applied' or 'failed'")

@@ -522,6 +522,138 @@ def cmd_costs_auto(args):
         sys.exit(1)
 
 
+# --- Commands (bidirectional control) ---
+
+# Agent display name → openclaw config agent id
+_AGENT_CONFIG_MAP = {
+    "Caramel": "main",
+    "Sixteen": "sixteen",
+    "Rex": "career",
+    "Vibe": "social",
+    "Mira": "mira",
+    "Luna": "luna",
+}
+
+
+def _apply_model_change(agent_name: str, model: str, config_path: Path) -> tuple:
+    """Update model.primary for the given agent in openclaw.json."""
+    if not config_path.exists():
+        return False, f"openclaw.json not found at {config_path}"
+    try:
+        config = json.loads(config_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        return False, f"Failed to read openclaw.json: {e}"
+
+    agent_id = _AGENT_CONFIG_MAP.get(agent_name)
+    if not agent_id:
+        return False, f"Unknown agent: {agent_name}"
+
+    agents_section = config.get("agents", {})
+    agents = agents_section.get("list", []) if isinstance(agents_section, dict) else agents_section
+    found = False
+    for agent in agents:
+        if agent.get("id") == agent_id:
+            if "model" not in agent:
+                agent["model"] = {}
+            if "/" not in model:
+                model = f"anthropic/{model}"
+            agent["model"]["primary"] = model
+            found = True
+            break
+
+    if not found:
+        return False, f"Agent '{agent_id}' not found in openclaw.json"
+
+    try:
+        config_path.write_text(json.dumps(config, indent=2) + "\n")
+    except OSError as e:
+        return False, f"Failed to write: {e}"
+
+    return True, f"Updated {agent_name} → {model}"
+
+
+def _handle_system_command(cmd_type: str) -> tuple:
+    """Execute system commands (stop/resume/fix)."""
+    import subprocess
+
+    if cmd_type == "stop_gateway":
+        try:
+            r = subprocess.run(["openclaw", "gateway", "stop"], capture_output=True, text=True, timeout=20)
+            return (r.returncode == 0), f"Gateway {'stopped' if r.returncode == 0 else 'failed: ' + r.stderr[:100]}"
+        except Exception as e:
+            return False, str(e)
+
+    elif cmd_type == "resume_gateway":
+        try:
+            r = subprocess.run(["openclaw", "gateway", "start"], capture_output=True, text=True, timeout=20)
+            return (r.returncode == 0), f"Gateway {'started' if r.returncode == 0 else 'failed: ' + r.stderr[:100]}"
+        except Exception as e:
+            return False, str(e)
+
+    elif cmd_type == "restart_gateway":
+        try:
+            r = subprocess.run(["openclaw", "gateway", "restart"], capture_output=True, text=True, timeout=30)
+            return (r.returncode == 0), f"Gateway {'restarted' if r.returncode == 0 else 'failed: ' + r.stderr[:100]}"
+        except Exception as e:
+            return False, str(e)
+
+    return False, f"Unknown system command: {cmd_type}"
+
+
+def cmd_commands_poll(args):
+    """Poll and optionally apply pending CRM commands."""
+    resp = api("GET", "/api/commands/pending")
+    if resp.status_code != 200:
+        die(resp)
+
+    commands = resp.json()
+    if not commands:
+        print("No pending commands.")
+        return
+
+    print(f"Found {len(commands)} pending command(s):")
+    openclaw_config = Path(args.config) if args.config else Path.home() / ".openclaw" / "openclaw.json"
+
+    for cmd in commands:
+        cmd_id = cmd["id"]
+        cmd_type = cmd["command_type"]
+        try:
+            payload = json.loads(cmd["payload"]) if isinstance(cmd["payload"], str) else cmd["payload"]
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+
+        print(f"\n  [{cmd_id}] {cmd_type}: {payload}")
+
+        if args.dry_run:
+            print(f"    [DRY RUN] Would apply {cmd_type}")
+            continue
+
+        if not args.apply:
+            print(f"    Use --apply to execute, or --dry-run to preview")
+            continue
+
+        # Apply the command
+        success, message = False, "Unknown command type"
+
+        if cmd_type == "change_model":
+            agent_name = payload.get("agent_name", "")
+            model = payload.get("model", "")
+            success, message = _apply_model_change(agent_name, model, openclaw_config)
+
+        elif cmd_type in ("stop_gateway", "resume_gateway", "restart_gateway", "fix_system"):
+            success, message = _handle_system_command(cmd_type)
+
+        print(f"    {'✅' if success else '❌'} {message}")
+
+        # Acknowledge
+        ack_data = {"status": "applied"} if success else {"status": "failed", "error": message}
+        ack_resp = api("POST", f"/api/commands/{cmd_id}/ack", json=ack_data)
+        if ack_resp.status_code == 200:
+            print(f"    Acknowledged")
+        else:
+            print(f"    ⚠ ACK failed: {ack_resp.status_code}")
+
+
 # --- Task commands ---
 
 def cmd_task_create(args):
@@ -699,6 +831,14 @@ def main():
     costs_auto.add_argument("--full", action="store_true", help="Full rescan (ignore last sync)")
     costs_auto.add_argument("--dry-run", action="store_true", help="Show what would be pushed without sending")
 
+    # commands
+    cmds_parser = sub.add_parser("commands", help="Bidirectional CRM ↔ agent control")
+    cmds_sub = cmds_parser.add_subparsers(dest="cmds_command")
+    cmds_poll = cmds_sub.add_parser("poll", help="Poll and apply pending commands from CRM")
+    cmds_poll.add_argument("--apply", action="store_true", help="Actually execute commands (default: list only)")
+    cmds_poll.add_argument("--dry-run", action="store_true", help="Show what would be done")
+    cmds_poll.add_argument("--config", help="Path to openclaw.json (auto-detected)")
+
     # task
     task_parser = sub.add_parser("task", help="Manage tasks")
     task_sub = task_parser.add_subparsers(dest="task_command")
@@ -773,6 +913,11 @@ def main():
             cmd_alert_send(args)
         else:
             alert_parser.print_help()
+    elif args.command == "commands":
+        if args.cmds_command == "poll":
+            cmd_commands_poll(args)
+        else:
+            cmds_parser.print_help()
     else:
         parser.print_help()
 
