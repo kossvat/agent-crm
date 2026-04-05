@@ -64,6 +64,24 @@ class TestAuthEndpoints:
         db.refresh(user)
         assert user.onboarding_complete is True
 
+    def test_onboarding_can_be_reset(self, client, auth_headers, db):
+        from backend.models import User
+
+        user = db.query(User).filter(User.id == 1).first()
+        user.onboarding_complete = True
+        db.commit()
+
+        resp = client.patch(
+            "/api/auth/onboarding-complete",
+            headers=auth_headers,
+            json={"complete": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "onboarding_complete": False}
+
+        db.refresh(user)
+        assert user.onboarding_complete is False
+
     def test_workspace_owner_can_update_own_budget(self, client, other_auth_headers, db):
         from backend.models import Workspace
 

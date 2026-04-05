@@ -1,6 +1,6 @@
 """Authentication router — Telegram login + JWT tokens."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -45,6 +45,10 @@ class TelegramLoginRequest(BaseModel):
 class AuthResponse(BaseModel):
     access_token: str
     user: dict
+
+
+class OnboardingCompleteRequest(BaseModel):
+    complete: bool = True
 
 
 @router.post("/telegram", response_model=AuthResponse)
@@ -141,17 +145,18 @@ def telegram_login(
 
 @router.patch("/onboarding-complete")
 def complete_onboarding(
+    data: OnboardingCompleteRequest = Body(default_factory=OnboardingCompleteRequest),
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Mark onboarding as complete for current user."""
+    """Update onboarding completion state for current user."""
     user_id = user.get("user_id")
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    db_user.onboarding_complete = True
+    db_user.onboarding_complete = data.complete
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "onboarding_complete": db_user.onboarding_complete}
 
 
 class BudgetUpdateRequest(BaseModel):

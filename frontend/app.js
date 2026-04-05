@@ -749,8 +749,10 @@ window.obGenerateLink = async function() {
 };
 
 window.showManualForm = function() {
-    document.getElementById('ob-card-manual').classList.add('active');
-    document.getElementById('ob-card-import').classList.remove('active');
+    const manualCard = document.getElementById('ob-card-manual');
+    const linkCard = document.getElementById('ob-card-link');
+    if (manualCard) manualCard.classList.add('active');
+    if (linkCard) linkCard.classList.remove('active');
     document.getElementById('ob-form-area').innerHTML = `
         <div class="onboarding-form">
             <div class="field">
@@ -1783,7 +1785,7 @@ window.submitNewAgent = async function() {
 
 window.rerunOnboarding = async function() {
     try {
-        await api('/auth/onboarding-complete', { method: 'POST', body: JSON.stringify({ complete: false }) });
+        await api('/auth/onboarding-complete', { method: 'PATCH', body: JSON.stringify({ complete: false }) });
     } catch(e) { /* ignore */ }
     onboardingStep = 1;
     onboardingAgents = [];
