@@ -16,6 +16,13 @@ from datetime import datetime, timezone, timedelta
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+def _require_workspace_owner(user: dict) -> None:
+    """Allow only the workspace owner or a superadmin."""
+    if user.get("is_workspace_owner") or user.get("is_superadmin"):
+        return
+    raise HTTPException(status_code=403, detail="Owner only")
+
+
 def _validate_invite(db: Session, code: str) -> InviteCode | None:
     """Validate an invite code. Returns InviteCode if valid, None otherwise."""
     invite = db.query(InviteCode).filter(InviteCode.code == code.strip().upper()).first()
@@ -158,8 +165,7 @@ def update_budget(
     db: Session = Depends(get_db),
 ):
     """Update workspace monthly budget. Owner only."""
-    if not user.get("is_owner"):
-        raise HTTPException(status_code=403, detail="Owner only")
+    _require_workspace_owner(user)
     ws_id = user.get("workspace_id", 1)
     workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
     if not workspace:
@@ -286,6 +292,7 @@ def generate_api_key(
     db: Session = Depends(get_db),
 ):
     """Generate a new API key for the current workspace. Replaces any existing key."""
+    _require_workspace_owner(user)
     ws_id = user.get("workspace_id", 1)
     workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
     if not workspace:
@@ -311,6 +318,7 @@ def get_api_key_status(
     db: Session = Depends(get_db),
 ):
     """Check if an API key exists for current workspace (masked)."""
+    _require_workspace_owner(user)
     ws_id = user.get("workspace_id", 1)
     workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
     if not workspace or not workspace.api_key:
@@ -328,6 +336,7 @@ def revoke_api_key(
     db: Session = Depends(get_db),
 ):
     """Revoke the API key for current workspace."""
+    _require_workspace_owner(user)
     ws_id = user.get("workspace_id", 1)
     workspace = db.query(Workspace).filter(Workspace.id == ws_id).first()
     if not workspace:

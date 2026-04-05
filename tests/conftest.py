@@ -2,8 +2,6 @@
 
 import os
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 # Force test database before importing app
 os.environ["DATABASE_URL"] = "sqlite:///test_crm.db"
@@ -12,10 +10,12 @@ os.environ["SECRET_KEY"] = "test-secret-key-minimum-32-bytes-long!!"
 os.environ["BOT_TOKEN"] = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
 os.environ["DISABLE_RATE_LIMIT"] = "true"
 os.environ["REQUIRE_INVITE"] = "false"
+os.environ["DISABLE_STARTUP_SYNC"] = "true"
+os.environ["DISABLE_WATCHDOG"] = "true"
 
 from fastapi.testclient import TestClient
 from backend.main import app
-from backend.database import Base, engine, SessionLocal, get_db, create_tables
+from backend.database import Base, engine, SessionLocal
 from backend.models import User, Workspace, Agent, Task, TierType
 from backend.auth import create_access_token
 
@@ -23,6 +23,8 @@ from backend.auth import create_access_token
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
     """Create tables once for test session."""
+    if os.path.exists("test_crm.db"):
+        os.remove("test_crm.db")
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     # Seed default user + workspace
@@ -83,5 +85,20 @@ def auth_headers(owner_token):
 
 @pytest.fixture
 def other_auth_headers(other_user_token):
-    """Auth headers for other user."""
+    """Auth headers for another workspace owner."""
     return {"Authorization": f"Bearer {other_user_token}"}
+
+
+@pytest.fixture
+def cross_workspace_headers(db):
+    """JWT for a user that does not own the requested workspace."""
+    user3 = db.query(User).filter(User.id == 3).first()
+    if not user3:
+        user3 = User(id=3, telegram_id=333333, name="CrossWorkspaceUser", onboarding_complete=False)
+        db.add(user3)
+        db.flush()
+        ws3 = Workspace(id=3, name="ThirdWorkspace", owner_id=3, tier=TierType.hobby, agent_limit=3)
+        db.add(ws3)
+        db.commit()
+    token = create_access_token(3, 1)
+    return {"Authorization": f"Bearer {token}"}

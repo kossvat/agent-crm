@@ -15,9 +15,14 @@ class TestGenerateConnectToken:
         assert "expires" in data
         assert data["connect_url"].endswith(data["token"])
 
-    def test_non_owner_cannot_generate(self, client, other_auth_headers):
+    def test_workspace_owner_can_generate_for_own_workspace(self, client, other_auth_headers):
         resp = client.post("/api/connect/generate", headers=other_auth_headers)
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+        assert resp.json()["connect_url"].endswith(resp.json()["token"])
+
+    def test_cross_workspace_token_cannot_generate(self, client, cross_workspace_headers):
+        resp = client.post("/api/connect/generate", headers=cross_workspace_headers)
+        assert resp.status_code == 401
 
     def test_no_auth_cannot_generate(self, client):
         resp = client.post("/api/connect/generate")
@@ -37,6 +42,14 @@ class TestRedeemConnectToken:
         assert data["workspace_id"] == 1
         assert "workspace_token" in data
         assert "workspace_name" in data
+
+    def test_redeem_workspace_2_token(self, client, other_auth_headers):
+        gen_resp = client.post("/api/connect/generate", headers=other_auth_headers)
+        token = gen_resp.json()["token"]
+
+        resp = client.get(f"/api/connect/{token}")
+        assert resp.status_code == 200
+        assert resp.json()["workspace_id"] == 2
 
     def test_redeem_invalid_token(self, client):
         resp = client.get("/api/connect/totally-invalid-token-here")

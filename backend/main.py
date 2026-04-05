@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from backend.routers import dashboard, agents, tasks, crons, costs, alerts, spen
 log = logging.getLogger("agent-crm")
 
 WATCHDOG_INTERVAL = 300  # 5 minutes
+DISABLE_STARTUP_SYNC = os.environ.get("DISABLE_STARTUP_SYNC") == "true"
+DISABLE_WATCHDOG = os.environ.get("DISABLE_WATCHDOG") == "true"
 
 
 async def watchdog_loop():
@@ -51,26 +54,30 @@ async def lifespan(app: FastAPI):
     log.info("Database tables created")
 
     # Initial sync from OpenClaw
-    try:
-        db = SessionLocal()
-        result = full_sync(db)
-        db.close()
-        log.info(f"Initial sync: {result}")
-    except Exception as e:
-        log.error(f"Initial sync failed: {e}")
+    if not DISABLE_STARTUP_SYNC:
+        try:
+            db = SessionLocal()
+            result = full_sync(db)
+            db.close()
+            log.info(f"Initial sync: {result}")
+        except Exception as e:
+            log.error(f"Initial sync failed: {e}")
 
     # Start watchdog background task
-    watchdog_task = asyncio.create_task(watchdog_loop())
-    log.info("Watchdog started (every 5 min)")
+    watchdog_task = None
+    if not DISABLE_WATCHDOG:
+        watchdog_task = asyncio.create_task(watchdog_loop())
+        log.info("Watchdog started (every 5 min)")
 
     yield
 
     # Cleanup
-    watchdog_task.cancel()
-    try:
-        await watchdog_task
-    except asyncio.CancelledError:
-        pass
+    if watchdog_task is not None:
+        watchdog_task.cancel()
+        try:
+            await watchdog_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -81,7 +88,6 @@ app = FastAPI(
 )
 
 # Rate limiting (before CORS so 429 still gets CORS headers)
-import os
 if os.environ.get("DISABLE_RATE_LIMIT") != "true":
     from backend.middleware.rate_limit import RateLimitMiddleware
     app.add_middleware(

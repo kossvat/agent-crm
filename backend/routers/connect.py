@@ -18,6 +18,13 @@ import os
 CRM_BASE_URL = os.getenv("CRM_BASE_URL", "https://myaiagentscrm.com")
 
 
+def _require_workspace_owner(user: dict) -> None:
+    """Allow only the workspace owner or a superadmin."""
+    if user.get("is_workspace_owner") or user.get("is_superadmin"):
+        return
+    raise HTTPException(status_code=403, detail="Owner only")
+
+
 # --- Schemas ---
 
 class GenerateResponse(BaseModel):
@@ -49,6 +56,7 @@ def generate_connect_token(
     db: Session = Depends(get_db),
 ):
     """Generate a magic link token for connecting remote agents."""
+    _require_workspace_owner(user)
 
     ws_id = user.get("workspace_id", 1)
     user_id = user.get("user_id")
@@ -79,6 +87,7 @@ def connect_status(
     db: Session = Depends(get_db),
 ):
     """List active (unused, non-expired) connect tokens for current workspace."""
+    _require_workspace_owner(user)
     ws_id = user.get("workspace_id", 1)
     tokens = (
         db.query(ConnectToken)
@@ -114,6 +123,7 @@ def has_redeemed_tokens(
     db: Session = Depends(get_db),
 ):
     """Check if any connect token has been redeemed (used) for this workspace."""
+    _require_workspace_owner(user)
     ws_id = user.get("workspace_id", 1)
     count = (
         db.query(ConnectToken)

@@ -51,11 +51,16 @@ def decode_workspace_token(token: str) -> dict:
 def decode_access_token(token: str) -> dict:
     """Decode and validate a JWT token. Returns payload dict."""
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise ValueError("Token expired")
     except jwt.InvalidTokenError as e:
         raise ValueError(f"Invalid token: {e}")
+    if payload.get("type") == "workspace":
+        raise ValueError("Invalid token: not a user access token")
+    if "user_id" not in payload or "workspace_id" not in payload:
+        raise ValueError("Invalid token: missing required claims")
+    return payload
 
 
 def validate_init_data(init_data: str) -> dict:
@@ -161,23 +166,34 @@ def get_current_user(request: Request) -> dict:
         try:
             payload = decode_access_token(token)
             jwt_user_id = payload["user_id"]
-            # Resolve is_owner and is_superadmin from DB
             from backend.database import SessionLocal
-            from backend.models import User
+            from backend.models import User, Workspace
             _db = SessionLocal()
-            _user = _db.query(User).filter(User.id == jwt_user_id).first()
-            _is_owner = _user and _user.telegram_id == OWNER_USER_ID if _user else False
-            _is_superadmin = _user.is_superadmin if _user else False
-            _db.close()
-            return {
-                "user_id": jwt_user_id,
-                "workspace_id": payload["workspace_id"],
-                "is_owner": _is_owner,
-                "is_superadmin": _is_superadmin,
-                "full_access": _is_owner,
-                "agent_id": None,
-                "username": _user.name if _user else "jwt_user",
-            }
+            try:
+                _user = _db.query(User).filter(User.id == jwt_user_id).first()
+                _workspace = _db.query(Workspace).filter(Workspace.id == payload["workspace_id"]).first()
+                if not _user or not _workspace:
+                    raise HTTPException(status_code=401, detail="Invalid token")
+
+                _is_platform_owner = _user.telegram_id == OWNER_USER_ID
+                _is_superadmin = bool(_user.is_superadmin)
+                _is_workspace_owner = _workspace.owner_id == _user.id
+
+                if not (_is_workspace_owner or _is_superadmin):
+                    raise HTTPException(status_code=401, detail="Invalid workspace access")
+
+                return {
+                    "user_id": jwt_user_id,
+                    "workspace_id": _workspace.id,
+                    "is_owner": _is_platform_owner,
+                    "is_workspace_owner": _is_workspace_owner,
+                    "is_superadmin": _is_superadmin,
+                    "full_access": _is_workspace_owner or _is_platform_owner or _is_superadmin,
+                    "agent_id": None,
+                    "username": _user.name,
+                }
+            finally:
+                _db.close()
         except ValueError as e:
             raise HTTPException(status_code=401, detail=str(e))
 
@@ -190,6 +206,7 @@ def get_current_user(request: Request) -> dict:
             "workspace_id": 1,
             "agent_id": agent_id,
             "is_owner": False,
+            "is_workspace_owner": False,
             "full_access": agent_id in FULL_ACCESS_AGENT_IDS,
             "username": agent_header,
         }
@@ -200,6 +217,7 @@ def get_current_user(request: Request) -> dict:
             "user_id": OWNER_USER_ID,
             "workspace_id": 1,
             "is_owner": True,
+            "is_workspace_owner": True,
             "full_access": True,
             "agent_id": None,
             "username": "dev",
@@ -220,6 +238,7 @@ def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=403, detail="Access denied")
 
     user["is_owner"] = True
+    user["is_workspace_owner"] = True
     user["full_access"] = True
     user["agent_id"] = None
     user["workspace_id"] = 1
