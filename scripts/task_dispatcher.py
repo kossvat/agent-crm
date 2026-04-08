@@ -20,15 +20,11 @@ DISPATCH_LOG = Path(os.getenv("DISPATCH_LOG_PATH", str(Path.home() / "projects/a
 
 OWNER_TG_ID = os.getenv("OWNER_TELEGRAM_ID", "0")
 
-# Agent ID → session key mapping (configure via env or override)
-AGENT_SESSIONS = {
-    1: f"agent:career:telegram:direct:{OWNER_TG_ID}",      # Rex
-    2: f"agent:main:telegram:direct:{OWNER_TG_ID}",         # Caramel
-    3: f"agent:sixteen:telegram:direct:{OWNER_TG_ID}",      # Sixteen
-    4: f"agent:social:telegram:direct:{OWNER_TG_ID}",       # Vibe
-}
+# Agent ID → session key mapping (customize for your agents)
+# Format: agent_id: "agent:<session_name>:telegram:direct:<telegram_id>"
+AGENT_SESSIONS = {}  # e.g. {1: f"agent:main:telegram:direct:{OWNER_TG_ID}"}
 
-AGENT_NAMES = {1: "Rex", 2: "Caramel", 3: "Sixteen", 4: "Vibe"}
+AGENT_NAMES = {}  # Populate from DB or config
 
 
 def load_dispatched():
@@ -70,25 +66,25 @@ def main():
         print("NO_NEW_TASKS")
         return
     
-    # Output tasks to dispatch as JSON for Caramel to send
+    # Output tasks to dispatch as JSON
     results = []
     for task in to_dispatch:
         agent_id = task["agent_id"]
         session_key = AGENT_SESSIONS.get(agent_id)
         agent_name = AGENT_NAMES.get(agent_id, f"Agent#{agent_id}")
         
-        if not session_key or agent_id == 2:  # Skip Caramel (self)
+        if not session_key:
             continue
         
-        message = f"""Задача из CRM (автоматическая):
+        message = f"""CRM Task (auto-dispatched):
 
 **{task['title']}**
-Приоритет: {task['priority']}
-Категория: {task['category'] or 'без категории'}
+Priority: {task['priority']}
+Category: {task['category'] or 'uncategorized'}
 
-{task['description'] or 'Без описания.'}
+{task['description'] or 'No description.'}
 
-Когда закончишь — обнови статус задачи в CRM на done."""
+When done, update the task status in CRM to done."""
         
         results.append({
             "task_id": task["id"],
@@ -105,7 +101,7 @@ def main():
     
     save_dispatched(dispatched)
     
-    # Output for Caramel
+    # Output results
     print(json.dumps(results, ensure_ascii=False, indent=2))
 
 

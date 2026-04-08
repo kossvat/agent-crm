@@ -26,12 +26,8 @@ log = logging.getLogger("agent-crm.journal")
 OPENCLAW_DIR = os.path.expanduser("~/.openclaw")
 
 # Workspace dirs per agent
-AGENT_WORKSPACES = {
-    "main": "workspace",
-    "sixteen": "workspace-sixteen",
-    "career": "workspace-career",
-    "social": "workspace-social",
-}
+# Agent session key → workspace dir mapping (customize for your agents)
+AGENT_WORKSPACES = {}  # e.g. {"main": "workspace", "assistant": "workspace-assistant"}
 
 
 @router.get("", response_model=list[JournalDayResponse])

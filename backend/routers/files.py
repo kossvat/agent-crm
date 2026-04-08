@@ -14,12 +14,9 @@ from backend.models import Agent, AgentFile
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
-AGENT_FILES = {
-    "Caramel": {"workspace": "workspace", "files": ["SOUL.md", "IDENTITY.md", "MEMORY.md"]},
-    "Sixteen": {"workspace": "workspace-sixteen", "files": ["SOUL.md", "IDENTITY.md", "MEMORY.md"]},
-    "Rex": {"workspace": "workspace-career", "files": ["SOUL.md", "IDENTITY.md", "MEMORY.md"]},
-    "Vibe": {"workspace": "workspace-vibe", "files": ["SOUL.md", "IDENTITY.md", "MEMORY.md"]},
-}
+# Agent name → workspace dir mapping (auto-populated from DB, or customize here)
+# Files are read from ~/.openclaw/<workspace>/<filename>
+AGENT_FILES = {}  # e.g. {"MyAgent": {"workspace": "workspace", "files": ["MEMORY.md"]}}
 
 
 def _has_local_filesystem() -> bool:

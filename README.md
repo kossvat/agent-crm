@@ -154,4 +154,4 @@ MIT License. See [LICENSE](LICENSE).
 
 ## Credits
 
-Built by [AgentForgeAI](https://agent-forge-ai.com).
+Open source AI agent team management.

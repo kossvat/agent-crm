@@ -178,7 +178,7 @@ function enterDemoMode() {
             <p class="landing-hero-subtitle">CRM built for AI-powered workflows. Track tasks, costs, and performance — all from Telegram.</p>
             <div class="landing-hero-ctas">
                 <button class="landing-btn landing-btn-primary" onclick="startDemoMode()">🎮 Try Demo</button>
-                <a href="https://t.me/Ai_Agent_CRM_bot" class="landing-btn landing-btn-secondary" target="_blank">🤖 Open in Telegram</a>
+                <a href="https://t.me/YOUR_BOT_USERNAME" class="landing-btn landing-btn-secondary" target="_blank">🤖 Open in Telegram</a>
             </div>
         </section>
 
@@ -286,9 +286,9 @@ function enterDemoMode() {
             <h2 class="landing-section-title">Ready to try?</h2>
             <div class="landing-hero-ctas">
                 <button class="landing-btn landing-btn-primary" onclick="startDemoMode()">🎮 Try Demo</button>
-                <a href="https://t.me/Ai_Agent_CRM_bot" class="landing-btn landing-btn-secondary" target="_blank">🤖 Open in Telegram</a>
+                <a href="https://t.me/YOUR_BOT_USERNAME" class="landing-btn landing-btn-secondary" target="_blank">🤖 Open in Telegram</a>
             </div>
-            <p class="landing-footer-note">Built for OpenClaw agents</p>
+            <p class="landing-footer-note">Built for AI agent teams</p>
         </section>
     </div>
     `;
@@ -325,7 +325,7 @@ function startDemoMode() {
         banner = document.createElement('div');
         banner.id = 'demo-banner';
         banner.innerHTML = `
-            <span>🎮 Demo Mode — <a href="https://t.me/Ai_Agent_CRM_bot" style="color:var(--link);text-decoration:underline;">Open in Telegram</a> for the real thing</span>
+            <span>🎮 Demo Mode — <a href="https://t.me/YOUR_BOT_USERNAME" style="color:var(--link);text-decoration:underline;">Open in Telegram</a> for the real thing</span>
             <button onclick="exitDemoMode()">Exit Demo</button>
         `;
         document.getElementById('app').prepend(banner);
@@ -499,7 +499,7 @@ function showInviteScreen(errorMsg = '') {
                 </button>
             </div>
             <div style="margin-top:16px; font-size:12px; color:var(--text-hint);">
-                Don't have a code? Join our <a href="https://t.me/agentforgeai" style="color:var(--link);">Telegram</a> for updates.
+                Don't have a code? Join our <a href="https://t.me/YOUR_CHANNEL" style="color:var(--link);">Telegram</a> for updates.
             </div>
         </div>
     `;
@@ -1719,7 +1719,7 @@ window.showAddAgentModal = function() {
     form.innerHTML = `
         <div class="field">
             <label for="new-agent-name">Name</label>
-            <input type="text" id="new-agent-name" required placeholder="e.g. Caramel">
+            <input type="text" id="new-agent-name" required placeholder="e.g. Assistant">
         </div>
         <div class="field">
             <label for="new-agent-emoji">Emoji</label>

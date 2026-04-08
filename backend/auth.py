@@ -105,16 +105,11 @@ def validate_init_data(init_data: str) -> dict:
 # Owner Telegram user_id — full access
 OWNER_USER_ID = int(os.getenv("OWNER_TELEGRAM_ID", "0"))
 
-# Agents with full access (owner + Caramel)
-FULL_ACCESS_AGENT_IDS = {2}  # Caramel
+# Agents with full access (populated from DB at startup or via env)
+FULL_ACCESS_AGENT_IDS = set()
 
-# Agent name → CRM agent_id (populated at runtime or hardcoded)
-AGENT_NAME_TO_ID = {
-    "rex": 1,
-    "caramel": 2,
-    "sixteen": 3,
-    "vibe": 4,
-}
+# Agent name → CRM agent_id (populated at runtime from DB)
+AGENT_NAME_TO_ID = {}
 
 
 def _is_local_request(request: Request) -> bool:

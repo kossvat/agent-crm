@@ -25,14 +25,8 @@ from urllib.error import HTTPError, URLError
 # openclaw.json default location
 OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"
 
-# Agent display name → openclaw config agent id
-AGENT_CONFIG_MAP = {
-    "Caramel": "main",
-    "Sixteen": "sixteen",
-    "Rex": "career",
-    "Vibe": "social",
-    "Mira": "mira",
-}
+# Agent display name → openclaw config agent id (customize for your agents)
+AGENT_CONFIG_MAP = {}  # e.g. {"MyAgent": "main", "Helper": "assistant"}
 
 
 def load_config() -> dict | None:

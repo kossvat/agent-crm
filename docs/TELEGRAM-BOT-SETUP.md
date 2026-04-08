@@ -16,7 +16,7 @@ Save the bot token → `.env` as `BOT_TOKEN`.
 
 Set:
 - **Menu button text:** `Open CRM`
-- **Menu button URL:** `https://crm.myaiagentscrm.com`
+- **Menu button URL:** `https://your-crm-domain.com`
 
 This adds the "Open CRM" button in the bot chat that launches the Mini App.
 
@@ -26,7 +26,7 @@ This adds the "Open CRM" button in the bot chat that launches the Mini App.
 /mybots → @agentcrm_bot → Bot Settings → Web App
 ```
 
-Set the Web App URL to: `https://crm.myaiagentscrm.com`
+Set the Web App URL to: `https://your-crm-domain.com`
 
 ## 4. Bot Commands
 
@@ -59,7 +59,7 @@ Add to backend — `bot_handler.py`:
 
 ```bash
 curl -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
-  -d "url=https://crm.myaiagentscrm.com/api/bot/webhook" \
+  -d "url=https://your-crm-domain.com/api/bot/webhook" \
   -d "allowed_updates=[\"message\",\"callback_query\"]"
 ```
 
@@ -95,7 +95,7 @@ User clicks → bot opens → Mini App launches with invite code ready.
 
 - [ ] Bot created on BotFather
 - [ ] BOT_TOKEN in `.env`
-- [ ] Menu Button → `https://crm.myaiagentscrm.com`
+- [ ] Menu Button → `https://your-crm-domain.com`
 - [ ] Web App URL set
 - [ ] Bot commands registered
 - [ ] Webhook configured (after deploy)

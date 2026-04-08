@@ -24,7 +24,7 @@ Standard setup — everything works out of the box:
 
 # Manual cron (if needed):
 crontab -e
-# */5 * * * * cd ~/projects/agentcrm-sync && python3 sync.py >> /tmp/crm-sync.log 2>&1
+# */5 * * * * cd /path/to/agentcrm-sync && python3 sync.py >> /tmp/crm-sync.log 2>&1
 ```
 
 ### macOS — Prevent Sleep

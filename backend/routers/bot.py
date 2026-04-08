@@ -10,7 +10,7 @@ from backend.config import BOT_TOKEN
 router = APIRouter(prefix="/api/bot", tags=["bot"])
 log = logging.getLogger("agent-crm.bot")
 
-CRM_URL = os.getenv("WEB_APP_URL", "https://localhost:8100")
+CRM_URL = os.getenv("WEB_APP_URL", "http://localhost:8100")
 
 
 def send_message(chat_id: int, text: str, reply_markup: dict | None = None):

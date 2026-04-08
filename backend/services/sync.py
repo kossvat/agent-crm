@@ -12,19 +12,14 @@ from backend.services.openclaw import get_agent_configs, get_crontab_entries, ge
 
 log = logging.getLogger("agent-crm.sync")
 
-SPENDING_DB = os.path.expanduser("~/projects/spending-tracker/spending.db")
+SPENDING_DB = os.getenv("SPENDING_DB", os.path.expanduser("~/spending-tracker/spending.db"))
 
 # Default workspace_id for sync operations (the local instance)
 DEFAULT_WORKSPACE_ID = 1
 
 # Map spending.db agent names to CRM names
-SPENDING_NAME_MAP = {
-    "main": "Caramel",
-    "sixteen": "Sixteen",
-    "career": "Rex",
-    "social": "Vibe",
-    "vibe": "Vibe",
-}
+# Map spending.db agent names to CRM names (customize for your agents)
+SPENDING_NAME_MAP = {}  # e.g. {"main": "MyAgent", "assistant": "Helper"}
 
 
 def sync_agents(db: DBSession, workspace_id: int = DEFAULT_WORKSPACE_ID) -> int:

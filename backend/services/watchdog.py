@@ -1,7 +1,7 @@
 """Watchdog — anomaly detection from spending.db.
 
 Run via cron every 5 minutes:
-  */5 * * * * cd ~/projects/agent-crm && python3 -m backend.services.watchdog >> /tmp/crm-watchdog.log 2>&1
+  */5 * * * * cd /path/to/agent-crm && python3 -m backend.services.watchdog >> /tmp/crm-watchdog.log 2>&1
 """
 
 import json
@@ -22,10 +22,10 @@ from backend.models import Alert, AlertType
 
 log = logging.getLogger("agent-crm.watchdog")
 
-SPENDING_DB = os.path.expanduser("~/projects/spending-tracker/spending.db")
-COLLECT_SCRIPT = os.path.expanduser("~/projects/spending-tracker/collect.py")
+SPENDING_DB = os.getenv("SPENDING_DB", os.path.expanduser("~/spending-tracker/spending.db"))
+COLLECT_SCRIPT = os.getenv("COLLECT_SCRIPT", os.path.expanduser("~/spending-tracker/collect.py"))
 TG_CHAT_ID = os.getenv("OWNER_TELEGRAM_ID", "")
-ALERT_STATE_FILE = os.path.expanduser("~/projects/agent-crm/data/.watchdog_state.json")
+ALERT_STATE_FILE = os.getenv("ALERT_STATE_FILE", os.path.expanduser("~/agent-crm/data/.watchdog_state.json"))
 
 # Thresholds
 BURST_10MIN = 8.0       # $ in 10 min — Opus sessions easily hit $2-5

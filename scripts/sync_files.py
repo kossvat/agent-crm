@@ -2,8 +2,8 @@
 """Sync agent files (SOUL.md, IDENTITY.md, MEMORY.md) from local OpenClaw to remote AgentCRM.
 
 Usage:
-    python3 scripts/sync_files.py --url https://myaiagentscrm.com --token TOKEN
-    WORKSPACE_TOKEN=TOKEN python3 scripts/sync_files.py --url https://myaiagentscrm.com
+    python3 scripts/sync_files.py --url https://your-crm-domain.com --token TOKEN
+    WORKSPACE_TOKEN=TOKEN python3 scripts/sync_files.py --url https://your-crm-domain.com
 
 The script reads files from ~/.openclaw/<workspace>/ and POSTs them to /api/files/sync.
 """
@@ -19,13 +19,9 @@ except ImportError:
     print("ERROR: 'requests' not installed. Run: pip install requests", file=sys.stderr)
     sys.exit(1)
 
-# Default agent → workspace directory mapping
-AGENTS = {
-    "Caramel": "workspace",
-    "Sixteen": "workspace-sixteen",
-    "Rex": "workspace-career",
-    "Vibe": "workspace-vibe",
-}
+# Default agent → workspace directory mapping (customize for your agents)
+# Or pass --agents "Name:workspace-dir,Name2:workspace-dir2" on CLI
+AGENTS = {}  # e.g. {"MyAgent": "workspace", "Helper": "workspace-helper"}
 
 FILES = ["SOUL.md", "IDENTITY.md", "MEMORY.md"]
 OPENCLAW_DIR = Path.home() / ".openclaw"
@@ -74,7 +70,7 @@ def sync(url: str, token: str, files: list[dict]) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Sync agent files to AgentCRM")
-    parser.add_argument("--url", required=True, help="AgentCRM base URL (e.g. https://myaiagentscrm.com)")
+    parser.add_argument("--url", required=True, help="AgentCRM base URL (e.g. https://your-crm-domain.com)")
     parser.add_argument("--token", default=None, help="Workspace token (or set WORKSPACE_TOKEN env)")
     parser.add_argument("--openclaw-dir", default=str(OPENCLAW_DIR), help="OpenClaw directory")
     parser.add_argument("--agents", default=None,

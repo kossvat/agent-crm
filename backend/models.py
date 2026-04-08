@@ -237,7 +237,7 @@ class PendingCommand(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
     command_type = Column(String(50), nullable=False)  # "change_model", "restart_gateway", etc.
-    payload = Column(Text, nullable=False)  # JSON: {"agent_name": "Caramel", "model": "claude-opus-4-6"}
+    payload = Column(Text, nullable=False)  # JSON: {"agent_name": "MyAgent", "model": "gpt-4"}
     status = Column(String(20), default="pending")  # pending, applied, failed
     created = Column(DateTime(timezone=True), default=utcnow)
     applied_at = Column(DateTime(timezone=True), nullable=True)

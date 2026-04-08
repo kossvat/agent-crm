@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/connect", tags=["connect"])
 
 DEFAULT_EXPIRY_HOURS = 24
 import os
-CRM_BASE_URL = os.getenv("CRM_BASE_URL", "https://myaiagentscrm.com")
+CRM_BASE_URL = os.getenv("CRM_BASE_URL", os.getenv("WEB_APP_URL", "http://localhost:8100"))
 
 
 # --- Schemas ---

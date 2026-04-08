@@ -20,7 +20,7 @@ from backend.plan_limits import get_plan_by_budget
 
 router = APIRouter(prefix="/api/spending", tags=["spending"])
 
-SPENDING_DB = os.path.expanduser("~/projects/spending-tracker/spending.db")
+SPENDING_DB = os.getenv("SPENDING_DB", os.path.expanduser("~/spending-tracker/spending.db"))
 
 ROLLING_WINDOW_HOURS = 5
 

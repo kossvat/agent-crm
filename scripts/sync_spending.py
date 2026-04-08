@@ -3,8 +3,8 @@
 Sync spending data from local MagicBox spending.db → CRM prod via /api/ingest.
 
 Usage:
-    python3 scripts/sync_spending.py --url https://myaiagentscrm.com --token TOKEN
-    python3 scripts/sync_spending.py --url https://myaiagentscrm.com --days 14
+    python3 scripts/sync_spending.py --url https://your-crm-domain.com --token TOKEN
+    python3 scripts/sync_spending.py --url https://your-crm-domain.com --days 14
 
 Auth: workspace connect token (--token or WORKSPACE_TOKEN env var).
 State: tracks last sync in ~/.crm_sync_state.json to avoid re-sending.
@@ -12,7 +12,7 @@ Safe to run multiple times — ingest API does upsert (sums tokens/cost per agen
 
 Cron setup:
     # Sync spending every hour
-    0 * * * * python3 /path/to/sync_spending.py --url https://myaiagentscrm.com --token YOUR_TOKEN
+    0 * * * * python3 /path/to/sync_spending.py --url https://your-crm-domain.com --token YOUR_TOKEN
 """
 
 import argparse
@@ -70,14 +70,8 @@ def get_records(db_path: Path, days: int, last_sync: str | None) -> list[dict]:
     rows = conn.execute(query, params).fetchall()
     conn.close()
 
-    # Map spending.db agent names → CRM agent names
-    AGENT_NAME_MAP = {
-        "main": "Caramel",
-        "sixteen": "Sixteen",
-        "career": "Rex",
-        "social": "Vibe",
-        "vibe": "Vibe",
-    }
+    # Map spending.db agent names → CRM agent names (customize for your agents)
+    AGENT_NAME_MAP = {}  # e.g. {"main": "MyAgent", "assistant": "Helper"}
 
     records = []
     for agent, date, model, input_t, output_t, cost in rows:

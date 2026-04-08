@@ -15,13 +15,9 @@ from backend.config import OPENCLAW_BIN, OPENCLAW_DIR
 log = logging.getLogger("agent-crm.openclaw")
 
 # Agent dir name → display name mapping
-AGENT_MAP = {
-    "main": {"name": "Caramel", "emoji": "🍬", "workspace": "workspace", "role": "Coordinator", "bio": "Lead agent, team coordination"},
-    "sixteen": {"name": "Sixteen", "emoji": "🔧", "workspace": "workspace-sixteen", "role": "CTO / Architect", "bio": "Code, architecture, debugging"},
-    "career": {"name": "Rex", "emoji": "🦅", "workspace": "workspace-career", "role": "Career / Business", "bio": "Job search, business development"},
-    "social": {"name": "Vibe", "emoji": "⚡", "workspace": "workspace-social", "role": "Content / SMM", "bio": "Social media, content planning"},
-    "vibe": {"name": "Vibe", "emoji": "⚡", "workspace": "workspace-vibe", "role": "Content / SMM", "bio": "Social media, content planning"},
-}
+# Agent dir name → display name mapping (customize for your agents)
+# These map OpenClaw workspace directory names to CRM agent profiles
+AGENT_MAP = {}  # e.g. {"main": {"name": "MyAgent", "emoji": "🤖", "role": "Assistant"}}
 
 # Skip these agent dirs
 SKIP_AGENTS = {"claude-code"}
@@ -139,7 +135,7 @@ def get_agent_configs() -> list[dict]:
         mapped = AGENT_MAP.get(dir_name, {})
         display_name = mapped.get("name", dir_name.capitalize())
 
-        # Deduplicate (vibe and social both map to Vibe)
+        # Deduplicate (multiple dirs may map to same agent name)
         if display_name in seen_names:
             continue
         seen_names.add(display_name)

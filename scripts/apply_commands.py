@@ -6,10 +6,10 @@ Polls the CRM API for pending commands, applies them (e.g. model changes
 to openclaw.json), and acknowledges completion.
 
 Usage:
-    python3 scripts/apply_commands.py --url https://myaiagentscrm.com --token TOKEN
+    python3 scripts/apply_commands.py --url https://your-crm-domain.com --token TOKEN
 
 Cron setup (hourly, alongside sync_spending):
-    0 * * * * python3 /path/to/apply_commands.py --url https://myaiagentscrm.com --token YOUR_TOKEN
+    0 * * * * python3 /path/to/apply_commands.py --url https://your-crm-domain.com --token YOUR_TOKEN
 """
 
 import argparse
@@ -24,14 +24,8 @@ from urllib.error import HTTPError, URLError
 # openclaw.json default location
 OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"
 
-# Agent display name → openclaw config agent id
-AGENT_CONFIG_MAP = {
-    "Caramel": "main",
-    "Sixteen": "sixteen",
-    "Rex": "career",
-    "Vibe": "social",
-    "Mira": "mira",
-}
+# Agent display name → openclaw config agent id (customize for your agents)
+AGENT_CONFIG_MAP = {}  # e.g. {"MyAgent": "main", "Helper": "assistant"}
 
 
 def api_get(url: str, token: str, path: str) -> list | dict:

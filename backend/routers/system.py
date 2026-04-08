@@ -19,7 +19,7 @@ from backend.models import PendingCommand
 router = APIRouter(prefix="/api/system", tags=["system"])
 log = logging.getLogger("agent-crm.system")
 
-SPENDING_DB = os.path.expanduser("~/projects/spending-tracker/spending.db")
+SPENDING_DB = os.getenv("SPENDING_DB", os.path.expanduser("~/spending-tracker/spending.db"))
 
 
 def _run_oc(args: list[str], timeout: int = 15) -> tuple[int, str, str]:

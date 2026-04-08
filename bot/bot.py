@@ -1,4 +1,4 @@
-#!/home/caramel/.caldav-env/bin/python3
+#!/usr/bin/env python3
 """Telegram bot for Agent CRM — WebApp button."""
 
 import asyncio
@@ -30,8 +30,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
     await update.message.reply_text(
         "**🤖 Agent CRM — Mission Control**\n\n"
-        "Управляй командой AI агентов из Telegram.\n"
-        "Нажми кнопку ниже:",
+        "Manage your AI agent team from Telegram.\n"
+        "Tap the button below:",
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
