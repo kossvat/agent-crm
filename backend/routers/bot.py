@@ -11,6 +11,7 @@ router = APIRouter(prefix="/api/bot", tags=["bot"])
 log = logging.getLogger("agent-crm.bot")
 
 CRM_URL = os.getenv("WEB_APP_URL", "http://localhost:8100")
+OWNER_TELEGRAM_ID = int(os.getenv("OWNER_TELEGRAM_ID", "0"))
 
 
 def send_message(chat_id: int, text: str, reply_markup: dict | None = None):
@@ -47,7 +48,13 @@ async def telegram_webhook(request: Request):
         return {"ok": True}
 
     chat_id = message["chat"]["id"]
+    user_id = message.get("from", {}).get("id", 0)
     text = message.get("text", "")
+
+    # Only allow owner to use the bot
+    if OWNER_TELEGRAM_ID and user_id != OWNER_TELEGRAM_ID:
+        send_message(chat_id, "🔒 This is a private CRM instance.\n\nDeploy your own: github.com/kossvat/agent-crm")
+        return {"ok": True}
 
     if text.startswith("/start"):
         parts = text.split(maxsplit=1)

@@ -18,11 +18,21 @@ from backend.config import BOT_TOKEN
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 WEB_APP_URL = os.getenv("WEB_APP_URL", "")
+OWNER_TELEGRAM_ID = int(os.getenv("OWNER_TELEGRAM_ID", "0"))
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not WEB_APP_URL:
         await update.message.reply_text("⚠️ WEB_APP_URL not set. Run with WEB_APP_URL=https://...")
+        return
+
+    # Only allow owner to use the bot
+    user_id = update.effective_user.id
+    if OWNER_TELEGRAM_ID and user_id != OWNER_TELEGRAM_ID:
+        await update.message.reply_text(
+            "🔒 This is a private CRM instance.\n\n"
+            "Deploy your own: github.com/kossvat/agent-crm"
+        )
         return
 
     keyboard = InlineKeyboardMarkup([
