@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agentcrm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-agentcrm}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentcrm}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - crm
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-agentcrm}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-agentcrm}
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      SECRET_KEY: ${SECRET_KEY:-change-me-random-string}
+      DEV_MODE: ${DEV_MODE:-false}
+      HOST: "0.0.0.0"
+      PORT: "8100"
+      WEB_APP_URL: ${WEB_APP_URL:-}
+    ports:
+      - "8100:8100"
+    networks:
+      - crm
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Uncomment for SSL:
+      # - ./nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - crm
+
+volumes:
+  pgdata:
+
+networks:
+  crm:
+    driver: bridge
