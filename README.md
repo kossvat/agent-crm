@@ -6,6 +6,24 @@ Self-hosted CRM for managing AI agent teams — Telegram Mini App.
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)
 ![License](https://img.shields.io/badge/license-MIT-brightgreen)
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="700">
+</p>
+
+<p align="center">
+  <em>Dashboard — system status, budget tracking, agent overview</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/mobile-dashboard.png" alt="Mobile Dashboard" width="280">
+</p>
+
+<p align="center">
+  <em>Telegram Mini App — mobile-first UI</em>
+</p>
+
 ## What is this
 
 A control panel for AI agent teams, delivered as a Telegram Mini App:
