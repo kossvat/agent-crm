@@ -33,4 +33,4 @@ HOST: str = os.getenv("HOST", "127.0.0.1")
 PORT: int = int(os.getenv("PORT", "8100"))
 
 # Invite system (closed beta)
-REQUIRE_INVITE: bool = os.getenv("REQUIRE_INVITE", "true").lower() in ("true", "1", "yes")
+REQUIRE_INVITE: bool = os.getenv("REQUIRE_INVITE", "false").lower() in ("true", "1", "yes")
